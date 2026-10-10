@@ -95,6 +95,14 @@ impl<'a> AnalyzeContext<'a, '_> {
                         diagnostics,
                     )?;
                 }
+                SequentialStatement::Block(ref mut block) => {
+                    self.define_labels_for_sequential_part(
+                        scope,
+                        parent,
+                        &mut block.statements,
+                        diagnostics,
+                    )?;
+                }
                 _ => {
                     // Does not have sequential part
                 }
@@ -285,6 +293,11 @@ impl<'a> AnalyzeContext<'a, '_> {
                         self.analyze_sequential_part(scope, parent, statements, diagnostics)?;
                     }
                 }
+            }
+            SequentialStatement::Block(ref mut block) => {
+                let region = scope.nested();
+                self.analyze_declarative_part(&region, parent, &mut block.decl, diagnostics)?;
+                self.analyze_sequential_part(&region, parent, &mut block.statements, diagnostics)?;
             }
             SequentialStatement::ProcedureCall(ref mut pcall) => {
                 self.analyze_procedure_call(scope, pcall, diagnostics)?;

@@ -68,6 +68,8 @@ pub enum DeclarationItem<'a> {
     GenerateBody(&'a WithDecl<Ident>),
     ConcurrentStatement(&'a LabeledConcurrentStatement),
     SequentialStatement(&'a LabeledSequentialStatement),
+    GroupTemplate(&'a GroupTemplateDeclaration),
+    Group(&'a GroupDeclaration),
     View(&'a ModeViewDeclaration),
 }
 
@@ -385,6 +387,10 @@ impl Search for LabeledSequentialStatement {
             }
             SequentialStatement::Case(ref case_stmt) => {
                 return_if_found!(case_stmt.search(ctx, searcher));
+            }
+            SequentialStatement::Block(ref block) => {
+                return_if_found!(block.decl.search(ctx, searcher));
+                return_if_found!(block.statements.search(ctx, searcher));
             }
             SequentialStatement::Loop(ref loop_stmt) => {
                 let LoopStatement {
@@ -847,13 +853,7 @@ impl Search for TypeDeclaration {
                 return_if_found!(body.decl.search(ctx, searcher));
             }
             TypeDefinition::Protected(ref prot_decl) => {
-                for item in prot_decl.items.iter() {
-                    match item {
-                        ProtectedTypeDeclarativeItem::Subprogram(ref subprogram) => {
-                            return_if_found!(subprogram.search(ctx, searcher));
-                        }
-                    }
-                }
+                return_if_found!(prot_decl.items.search(ctx, searcher));
             }
             TypeDefinition::Record(ref element_decls) => {
                 for elem in element_decls {
@@ -1280,6 +1280,34 @@ impl Search for Declaration {
             Declaration::Configuration(_) => {
                 // @TODO
             }
+            Declaration::GroupTemplate(template) => {
+                return_if_found!(searcher
+                    .search_decl(
+                        ctx,
+                        FoundDeclaration::new(
+                            &template.ident.decl,
+                            DeclarationItem::GroupTemplate(template)
+                        )
+                    )
+                    .or_not_found());
+            }
+            Declaration::Group(group) => {
+                return_if_found!(searcher
+                    .search_decl(
+                        ctx,
+                        FoundDeclaration::new(&group.ident.decl, DeclarationItem::Group(group))
+                    )
+                    .or_not_found());
+                return_if_found!(group.template.search(ctx, searcher));
+                return_if_found!(group.constituents.search(ctx, searcher));
+            }
+            Declaration::Disconnection(spec) => {
+                if let GuardedSignalList::Names(names) = &spec.signals {
+                    return_if_found!(names.search(ctx, searcher));
+                }
+                return_if_found!(spec.type_mark.search(ctx, searcher));
+                return_if_found!(spec.time.search(ctx, searcher));
+            }
             Declaration::View(view) => {
                 return_if_found!(searcher
                     .search_decl(
@@ -1375,9 +1403,34 @@ impl Search for InterfaceDeclaration {
                 return_if_found!(searcher
                     .search_decl(
                         ctx,
-                        FoundDeclaration::new(&decl.decl, DeclarationItem::InterfaceType(decl))
+                        FoundDeclaration::new(
+                            &decl.ident.decl,
+                            DeclarationItem::InterfaceType(&decl.ident)
+                        )
                     )
                     .or_not_found());
+                match decl.definition.as_ref().map(|definition| &definition.item) {
+                    Some(IncompleteTypeDefinition::Array(indexes, _, subtype)) => {
+                        for index in indexes {
+                            match index {
+                                ArrayIndex::IndexSubtypeDefintion(type_mark) => {
+                                    return_if_found!(type_mark.search(ctx, searcher));
+                                }
+                                ArrayIndex::Discrete(drange) => {
+                                    return_if_found!(drange.item.search(ctx, searcher));
+                                }
+                            }
+                        }
+                        return_if_found!(subtype.search(ctx, searcher));
+                    }
+                    Some(IncompleteTypeDefinition::Access(subtype)) => {
+                        return_if_found!(subtype.search(ctx, searcher));
+                    }
+                    Some(IncompleteTypeDefinition::File(type_mark)) => {
+                        return_if_found!(type_mark.search(ctx, searcher));
+                    }
+                    _ => {}
+                }
             }
             InterfaceDeclaration::Package(package_instance) => {
                 return_if_found!(searcher
@@ -1934,6 +1987,7 @@ impl FoundDeclaration<'_> {
             DeclarationItem::SequentialStatement(..) => None,
             DeclarationItem::SubprogramInstantiation(_) => None,
             DeclarationItem::View(view) => view.end_ident_pos,
+            DeclarationItem::GroupTemplate(_) | DeclarationItem::Group(_) => None,
         }
     }
 
@@ -2063,6 +2117,34 @@ impl std::fmt::Display for DeclarationItem<'_> {
                 }
             }
             DeclarationItem::View(value) => write!(f, "view {} of {}", value.ident, value.typ),
+            DeclarationItem::GroupTemplate(value) => {
+                let entries = value
+                    .entries
+                    .iter()
+                    .map(|entry| {
+                        if entry.is_open {
+                            format!("{} <>", entry.class)
+                        } else {
+                            entry.class.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "group {} is ({entries})", value.ident)
+            }
+            DeclarationItem::Group(value) => {
+                let constituents = value
+                    .constituents
+                    .iter()
+                    .map(|name| name.item.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "group {} : {} ({constituents})",
+                    value.ident, value.template.item
+                )
+            }
         }
     }
 }

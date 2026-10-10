@@ -12,6 +12,7 @@ use super::expression::{parse_choices, parse_expression};
 use super::interface_declaration::{parse_generic_interface_list, parse_port_interface_list};
 use super::names::parse_name;
 use super::names::{expression_to_ident, parse_association_list, parse_selected_name};
+use super::psl::{is_psl_item, skip_psl_item};
 use super::range::parse_discrete_range;
 use super::sequential_statement::{
     parse_assert_statement, parse_labeled_sequential_statements, parse_selection,
@@ -283,11 +284,9 @@ fn to_procedure_call(
 fn parse_assignment_known_target(
     ctx: &mut ParsingContext<'_>,
     target: WithTokenSpan<Target>,
+    postponed: bool,
 ) -> ParseResult<ConcurrentStatement> {
-    // @TODO postponed
-    let postponed = false;
-    // @TODO guarded
-    let guarded = false;
+    let guarded = ctx.stream.pop_if_kind(Guarded).is_some();
     let delay_mechanism = parse_delay_mechanism(ctx)?;
     let rhs = parse_signal_assignment_right_hand(ctx)?;
     Ok(ConcurrentStatement::Assignment(
@@ -306,13 +305,14 @@ fn parse_assignment_known_target(
 fn parse_assignment_or_procedure_call(
     ctx: &mut ParsingContext<'_>,
     target: WithTokenSpan<Target>,
+    postponed: bool,
 ) -> ParseResult<ConcurrentStatement> {
     expect_token!(ctx.stream, token,
     LTE => {
-        parse_assignment_known_target(ctx, target)
+        parse_assignment_known_target(ctx, target, postponed)
     },
     SemiColon => {
-        Ok(ConcurrentStatement::ProcedureCall(to_procedure_call(ctx, target, false)?))
+        Ok(ConcurrentStatement::ProcedureCall(to_procedure_call(ctx, target, postponed)?))
     })
 }
 
@@ -326,8 +326,7 @@ fn parse_selected_signal_assignment(
     let is_matching = ctx.stream.pop_if_kind(Que).is_some();
     let target = parse_target(ctx)?;
     ctx.stream.expect_kind(LTE)?;
-    // @TODO guarded
-    let guarded = false;
+    let guarded = ctx.stream.pop_if_kind(Guarded).is_some();
     let delay_mechanism = parse_delay_mechanism(ctx)?;
     let rhs = AssignmentRightHand::Selected(parse_selection(
         ctx,
@@ -656,10 +655,13 @@ pub fn parse_concurrent_statement(
                     Process => ConcurrentStatement::Process(parse_process_statement(ctx, label, Some(tok))?),
                     Assert => ConcurrentStatement::Assert(parse_concurrent_assert_statement(ctx, true)?),
                     With => ConcurrentStatement::Assignment(parse_selected_signal_assignment(ctx, true)?),
+                    LeftPar => {
+                        let target = parse_aggregate(ctx)?.map_into(Target::Aggregate);
+                        parse_assignment_or_procedure_call(ctx, target, true)?
+                    }
                     _ => {
                         let target = parse_name(ctx)?.map_into(Target::Name);
-                        expect_semicolon(ctx);
-                        ConcurrentStatement::ProcedureCall(to_procedure_call(ctx, target, true)?)
+                        parse_assignment_or_procedure_call(ctx, target, true)?
                     }
                 }
             },
@@ -674,18 +676,18 @@ pub fn parse_concurrent_statement(
                         ConcurrentStatement::Instance(parse_instantiation_statement(ctx, start_tok, unit)?)
                     }
                     _ => {
-                        parse_assignment_or_procedure_call(ctx, name.map_into(Target::Name))?
+                        parse_assignment_or_procedure_call(ctx, name.map_into(Target::Name), false)?
                     }
                 }
             },
             LtLt => {
                 let name = parse_name(ctx)?;
                 ctx.stream.expect_kind(LTE)?;
-                parse_assignment_known_target(ctx, name.map_into(Target::Name))?
+                parse_assignment_known_target(ctx, name.map_into(Target::Name), false)?
             },
             LeftPar => {
                 let target = parse_aggregate(ctx)?.map_into(Target::Aggregate);
-                parse_assignment_or_procedure_call(ctx, target)?
+                parse_assignment_or_procedure_call(ctx, target, false)?
             }
         )
     };
@@ -702,20 +704,38 @@ pub fn parse_labeled_concurrent_statements(
             End | Elsif | Else | When => {
                 break Ok(statements);
             }
-            _ => match parse_labeled_concurrent_statement(ctx) {
-                Ok(stmt) => {
-                    statements.push(stmt);
+            _ if is_psl_item(ctx) => skip_psl_item(ctx)?,
+            _ => {
+                let start = ctx.stream.state();
+                match parse_labeled_concurrent_statement(ctx) {
+                    Ok(stmt) => {
+                        statements.push(stmt);
+                    }
+                    // An assertion that is not a VHDL assertion is a PSL assertion.
+                    Err(_) if is_assertion_at(ctx, start) => {
+                        ctx.stream.set_state(start);
+                        skip_psl_item(ctx)?;
+                    }
+                    Err(diagnostic) => {
+                        ctx.diagnostics.push(diagnostic);
+                        ctx.stream.skip_until(|kind| {
+                            matches!(kind, SemiColon | End | Process | Block | Assert)
+                        })?;
+                        ctx.stream.pop_if_kind(SemiColon);
+                    }
                 }
-                Err(diagnostic) => {
-                    ctx.diagnostics.push(diagnostic);
-                    ctx.stream.skip_until(|kind| {
-                        matches!(kind, SemiColon | End | Process | Block | Assert)
-                    })?;
-                    ctx.stream.pop_if_kind(SemiColon);
-                }
-            },
+            }
         }
     }
+}
+
+fn is_assertion_at(ctx: &ParsingContext<'_>, state: usize) -> bool {
+    let current = ctx.stream.state();
+    ctx.stream.set_state(state);
+    let is_assertion =
+        ctx.stream.next_kinds_are(&[Identifier, Colon, Assert]) || ctx.stream.next_kind_is(Assert);
+    ctx.stream.set_state(current);
+    is_assertion
 }
 
 pub fn parse_labeled_concurrent_statement(
@@ -737,7 +757,7 @@ pub fn parse_labeled_concurrent_statement(
             })
         } else {
             let target = name.map_into(Target::Name);
-            let statement = parse_assignment_or_procedure_call(ctx, target)?;
+            let statement = parse_assignment_or_procedure_call(ctx, target, false)?;
             let end_pos = ctx.stream.get_last_token_id();
 
             Ok(LabeledConcurrentStatement {
@@ -1329,6 +1349,39 @@ end process;",
         assert_eq!(
             stmt.statement,
             WithTokenSpan::new(ConcurrentStatement::Assignment(assign), code.token_span())
+        );
+    }
+
+    #[test]
+    fn test_postponed_guarded_concurrent_signal_assignment() {
+        let code = Code::new("postponed foo <= guarded bar;");
+        let assign = ConcurrentSignalAssignment {
+            postponed: true,
+            guarded: true,
+            assignment: SignalAssignment {
+                target: code.s1("foo").name().map_into(Target::Name),
+                delay_mechanism: None,
+                rhs: AssignmentRightHand::Simple(code.s1("bar").waveform()),
+            },
+        };
+        let stmt = code.with_stream_no_diagnostics(parse_labeled_concurrent_statement);
+        assert_eq!(
+            stmt.statement,
+            WithTokenSpan::new(ConcurrentStatement::Assignment(assign), code.token_span())
+        );
+    }
+
+    #[test]
+    fn test_guarded_selected_signal_assignment() {
+        let code = Code::new("with x select foo <= guarded bar when others;");
+        let stmt = code.with_stream_no_diagnostics(parse_labeled_concurrent_statement);
+        assert_matches::assert_matches!(
+            stmt.statement.item,
+            ConcurrentStatement::Assignment(ConcurrentSignalAssignment {
+                postponed: false,
+                guarded: true,
+                ..
+            })
         );
     }
 

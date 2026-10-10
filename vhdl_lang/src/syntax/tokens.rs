@@ -7,6 +7,7 @@
 #[macro_use]
 mod tokenizer;
 /// Contains constant keywords for different versions of VHDL.
+mod conditional_analysis;
 mod keywords;
 mod tokenstream;
 

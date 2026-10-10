@@ -361,3 +361,70 @@ end package body;
         2
     );
 }
+
+#[test]
+fn protected_type_declaration_allows_use_clauses_attributes_and_pure_functions() {
+    let mut builder = LibraryBuilder::new();
+    builder.code(
+        "libname",
+        "
+package types is
+    type state_t is (idle, busy);
+end package;
+
+package pkg is
+    type prot_t is protected
+        use work.types.all;
+        pure function get return state_t;
+        procedure set(value : state_t);
+        attribute foreign of set : procedure is \"set\";
+    end protected;
+end package;
+
+package body pkg is
+    type prot_t is protected body
+        variable state : work.types.state_t := work.types.idle;
+
+        pure function get return work.types.state_t is
+        begin
+            return state;
+        end function;
+
+        procedure set(value : work.types.state_t) is
+        begin
+            state := value;
+        end procedure;
+    end protected body;
+end package body;
+",
+    );
+    check_no_diagnostics(&builder.analyze());
+}
+
+#[test]
+fn protected_type_declaration_does_not_allow_objects() {
+    let mut builder = LibraryBuilder::new();
+    let code = builder.code(
+        "libname",
+        "
+package pkg is
+    type prot_t is protected
+        variable v : natural;
+    end protected;
+end package;
+
+package body pkg is
+    type prot_t is protected body
+    end protected body;
+end package body;
+",
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::new(
+            code.s1("variable v : natural;"),
+            "variable declaration not allowed in a protected type declaration",
+            ErrorCode::DeclarationNotAllowed,
+        )],
+    );
+}

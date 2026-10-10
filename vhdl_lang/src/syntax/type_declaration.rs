@@ -9,7 +9,6 @@ use super::common::ParseResult;
 use super::declarative_part::parse_declarative_part;
 use super::names::parse_identifier_list;
 use super::range::{parse_array_index_constraint, parse_range};
-use super::subprogram::parse_subprogram_declaration;
 use super::subtype_indication::parse_subtype_indication;
 use super::tokens::{Kind::*, TokenSpan};
 use crate::ast::token_range::WithTokenSpan;
@@ -48,7 +47,7 @@ fn parse_enumeration_type_definition(ctx: &mut ParsingContext<'_>) -> ParseResul
     Ok(TypeDefinition::Enumeration(enum_literals))
 }
 
-fn parse_array_index_constraints(ctx: &mut ParsingContext<'_>) -> ParseResult<Vec<ArrayIndex>> {
+pub fn parse_array_index_constraints(ctx: &mut ParsingContext<'_>) -> ParseResult<Vec<ArrayIndex>> {
     ctx.stream.expect_kind(LeftPar)?;
     let mut indexes = Vec::new();
     loop {
@@ -124,22 +123,8 @@ pub fn parse_subtype_declaration(ctx: &mut ParsingContext<'_>) -> ParseResult<Ty
 pub fn parse_protected_type_declaration(
     ctx: &mut ParsingContext<'_>,
 ) -> ParseResult<(ProtectedTypeDeclaration, Option<Ident>)> {
-    let mut items = Vec::new();
-
-    loop {
-        let token = ctx.stream.peek_expect()?;
-
-        try_init_token_kind!(
-            token,
-            Impure | Function | Procedure => items.push(ProtectedTypeDeclarativeItem::Subprogram(
-                parse_subprogram_declaration(ctx)?,
-            )),
-            End => {
-                ctx.stream.skip();
-                break;
-            }
-        );
-    }
+    let items = parse_declarative_part(ctx)?;
+    ctx.stream.expect_kind(End)?;
     ctx.stream.expect_kind(Protected)?;
     let end_ident = ctx.stream.pop_optional_ident();
     Ok((ProtectedTypeDeclaration { items }, end_ident))
@@ -686,7 +671,7 @@ end foo;",
     fn protected_decl(
         ident: Ident,
         token_span: TokenSpan,
-        items: Vec<ProtectedTypeDeclarativeItem>,
+        items: Vec<WithTokenSpan<Declaration>>,
         end_ident_pos: Option<TokenId>,
     ) -> TypeDeclaration {
         TypeDeclaration {
@@ -740,12 +725,9 @@ type foo is protected
 end protected;
 ",
         );
-        let items = vec![
-            ProtectedTypeDeclarativeItem::Subprogram(code.s1("procedure proc;").subprogram_decl()),
-            ProtectedTypeDeclarativeItem::Subprogram(
-                code.s1("function fun return ret;").subprogram_decl(),
-            ),
-        ];
+        let items = code
+            .s1("procedure proc;\n  function fun return ret;")
+            .declarative_part();
 
         assert_eq!(
             code.with_stream_no_diagnostics(parse_type_declaration),

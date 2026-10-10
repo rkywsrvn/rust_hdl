@@ -64,6 +64,9 @@ impl Declaration {
                         | Use(_)
                         | Package(_)
                         | Configuration(_)
+                        | Disconnection(_)
+                        | GroupTemplate(_)
+                        | Group(_)
                         | View(_)
                 )
             }
@@ -84,6 +87,9 @@ impl Declaration {
                     | SubprogramBody(_)
                     | Use(_)
                     | Package(_)
+                    | Disconnection(_)
+                    | GroupTemplate(_)
+                    | Group(_)
                     | View(_)
             ),
             // LRM: package_body_declarative_item
@@ -95,6 +101,7 @@ impl Declaration {
                 | Overloaded::UninstSubprogram(..),
             )
             | AnyEntKind::Concurrent(Some(Concurrent::Process), _)
+            | AnyEntKind::Sequential(Some(Sequential::Block))
             | AnyEntKind::Type(named_entity::Type::Protected(..)) => matches!(
                 self,
                 Object(ObjectDeclaration {
@@ -109,6 +116,8 @@ impl Declaration {
                     | SubprogramBody(_)
                     | Use(_)
                     | Package(_)
+                    | GroupTemplate(_)
+                    | Group(_)
             ),
             // LRM: package_declarative_item
             AnyEntKind::Design(Design::Package(..)) => matches!(
@@ -123,6 +132,9 @@ impl Declaration {
                     | SubprogramInstantiation(_)
                     | Use(_)
                     | Package(_)
+                    | Disconnection(_)
+                    | GroupTemplate(_)
+                    | Group(_)
                     | View(_)
             ),
             _ => {
@@ -346,7 +358,7 @@ impl<'a> AnalyzeContext<'a, '_> {
                 }
                 ResolvedName::Final(ent) => {
                     if let Some(ent) = ViewEnt::from_any(ent) {
-                        AnyEntKind::View(*ent.subtype())
+                        AnyEntKind::View(ent.view().clone())
                     } else {
                         // @TODO some of these can probably be aliased
                         return Err(EvalError::Unknown);
@@ -609,6 +621,30 @@ impl<'a> AnalyzeContext<'a, '_> {
                 }
             }
             Declaration::Configuration(..) => {}
+            Declaration::Disconnection(spec) => {
+                self.analyze_disconnection_specification(scope, spec, diagnostics)?
+            }
+            Declaration::GroupTemplate(template) => {
+                if let Some(entry) = template.entries.iter().rev().skip(1).find(|e| e.is_open) {
+                    diagnostics.add(
+                        decl.span.pos(self.ctx),
+                        format!("Only the last entry may have '<>', not {}", entry.class),
+                        ErrorCode::SyntaxError,
+                    );
+                }
+                let ent = self.define(
+                    &mut template.ident,
+                    parent,
+                    AnyEntKind::GroupTemplate(template.entries.clone()),
+                    src_span,
+                );
+                scope.add(ent, diagnostics);
+            }
+            Declaration::Group(group) => {
+                self.analyze_group_constituents(scope, group, diagnostics)?;
+                let ent = self.define(&mut group.ident, parent, AnyEntKind::Group, src_span);
+                scope.add(ent, diagnostics);
+            }
             Declaration::View(view) => {
                 if let Some(view) = as_fatal(self.analyze_view_declaration(
                     scope,
@@ -624,6 +660,136 @@ impl<'a> AnalyzeContext<'a, '_> {
         };
 
         Ok(())
+    }
+
+    /// LRM 6.10: Each constituent must belong to the entity class of its template entry.
+    fn analyze_group_constituents(
+        &self,
+        scope: &Scope<'a>,
+        group: &mut GroupDeclaration,
+        diagnostics: &mut dyn DiagnosticHandler,
+    ) -> FatalResult {
+        let Some(template) = as_fatal(self.name_resolve(
+            scope,
+            group.template.span,
+            &mut group.template.item,
+            diagnostics,
+        ))?
+        else {
+            return Ok(());
+        };
+        let entries = match template {
+            ResolvedName::Final(ent) => match ent.kind() {
+                AnyEntKind::GroupTemplate(entries) => entries.clone(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
+        if entries.is_empty() {
+            diagnostics.add(
+                group.template.span.pos(self.ctx),
+                format!("{} is not a group template", template.describe()),
+                ErrorCode::MismatchedKinds,
+            );
+            return Ok(());
+        }
+        let is_open = entries.last().is_some_and(|entry| entry.is_open);
+        let count_matches = if is_open {
+            group.constituents.len() + 1 >= entries.len()
+        } else {
+            group.constituents.len() == entries.len()
+        };
+        if !count_matches {
+            diagnostics.add(
+                group.template.span.pos(self.ctx),
+                format!(
+                    "Group template has {} entries, but the group has {} constituents",
+                    entries.len(),
+                    group.constituents.len()
+                ),
+                ErrorCode::Unassociated,
+            );
+        }
+        for (i, constituent) in group.constituents.iter_mut().enumerate() {
+            let Name::Designator(designator) = &mut constituent.item else {
+                as_fatal(self.name_resolve(
+                    scope,
+                    constituent.span,
+                    &mut constituent.item,
+                    diagnostics,
+                ))?;
+                continue;
+            };
+            let ent = match scope.lookup(&designator.item) {
+                Ok(NamedEntities::Single(ent)) => ent,
+                Ok(NamedEntities::Overloaded(overloaded)) => match overloaded.as_unique() {
+                    Some(ent) => ent,
+                    None => continue,
+                },
+                Err(err) => {
+                    diagnostics.push(err.into_diagnostic(self.ctx, constituent.span));
+                    continue;
+                }
+            };
+            designator.set_unique_reference(ent);
+            let Some(entry) = entries.get(i).or(entries.last().filter(|_| is_open)) else {
+                continue;
+            };
+            if get_entity_class(ent.as_actual()) != Some(entry.class) {
+                diagnostics.add(
+                    constituent.span.pos(self.ctx),
+                    format!("{} is not of class {}", ent.describe(), entry.class),
+                    ErrorCode::MismatchedEntityClass,
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// LRM 7.4: The signals must be signals of the given type.
+    fn analyze_disconnection_specification(
+        &self,
+        scope: &Scope<'a>,
+        spec: &mut DisconnectionSpecification,
+        diagnostics: &mut dyn DiagnosticHandler,
+    ) -> FatalResult {
+        let typ = as_fatal(self.type_name(
+            scope,
+            spec.type_mark.span,
+            &mut spec.type_mark.item,
+            diagnostics,
+        ))?;
+        if let GuardedSignalList::Names(names) = &mut spec.signals {
+            for name in names.iter_mut() {
+                let Some(object) = as_fatal(self.resolve_object_name(
+                    scope,
+                    name.span,
+                    &mut name.item,
+                    "is not a signal",
+                    ErrorCode::MismatchedKinds,
+                    diagnostics,
+                ))?
+                else {
+                    continue;
+                };
+                if object.base.class() != ObjectClass::Signal {
+                    diagnostics.add(
+                        name.span.pos(self.ctx),
+                        format!("{} is not a signal", object.base.describe()),
+                        ErrorCode::MismatchedKinds,
+                    );
+                } else if let Some(typ) = typ {
+                    if object.type_mark().base() != typ.base() {
+                        diagnostics.push(Diagnostic::type_mismatch(
+                            &name.span.pos(self.ctx),
+                            &object.describe_type(),
+                            typ,
+                        ));
+                    }
+                }
+            }
+        }
+        self.expr_with_ttyp(scope, self.time(), &mut spec.time, diagnostics)
     }
 
     /// Analyzes a mode view declaration.
@@ -659,7 +825,9 @@ impl<'a> AnalyzeContext<'a, '_> {
             }
         };
         let mut unassociated: HashSet<_> = record_region.elems.iter().collect();
+        let mut elements = Vec::new();
         for element in view.elements.iter_mut() {
+            let mode = self.analyze_mode_view_element(&mut element.mode, scope, diagnostics)?;
             for name in element.names.iter_mut() {
                 let desi = Designator::Identifier(name.tree.item.clone());
                 let Some(record_element) = record_region.lookup(&desi) else {
@@ -671,9 +839,19 @@ impl<'a> AnalyzeContext<'a, '_> {
                     continue;
                 };
                 name.decl.set_unique_reference(&record_element);
-                unassociated.remove(&record_element);
+                if !unassociated.remove(&record_element) {
+                    diagnostics.add(
+                        name.pos(self.ctx),
+                        format!("{} is already part of the view", record_element.describe()),
+                        ErrorCode::AlreadyAssociated,
+                    );
+                    continue;
+                }
+                if let Some(mode) = mode {
+                    self.check_view_element_type(&record_element, mode, &element.mode, diagnostics);
+                    elements.push((desi, mode));
+                }
             }
-            self.analyze_mode_view_element(&mut element.mode, scope, diagnostics)?;
         }
         if !unassociated.is_empty() {
             diagnostics.add(
@@ -682,7 +860,15 @@ impl<'a> AnalyzeContext<'a, '_> {
                 ErrorCode::Unassociated,
             );
         }
-        Ok(self.define(&mut view.ident, parent, AnyEntKind::View(typ), src_span))
+        Ok(self.define(
+            &mut view.ident,
+            parent,
+            AnyEntKind::View(View {
+                subtype: typ,
+                elements,
+            }),
+            src_span,
+        ))
     }
 
     fn analyze_mode_view_element(
@@ -690,27 +876,75 @@ impl<'a> AnalyzeContext<'a, '_> {
         mode: &mut ElementMode,
         scope: &Scope<'a>,
         diagnostics: &mut dyn DiagnosticHandler,
-    ) -> EvalResult {
-        match mode {
-            ElementMode::Simple(_) => {}
-            ElementMode::Record(name) | ElementMode::Array(name) => {
-                let Some(resolved_name) =
-                    as_fatal(self.name_resolve(scope, name.span, &mut name.item, diagnostics))?
-                else {
-                    return Ok(());
-                };
-                match resolved_name {
-                    ResolvedName::Final(ent) if matches!(ent.kind(), AnyEntKind::View(_)) => {}
-                    _ => {
-                        diagnostics.push(Diagnostic::mismatched_kinds(
-                            name.span.pos(self.ctx),
-                            "Expected view",
-                        ));
-                    }
-                }
-            }
+    ) -> EvalResult<Option<ViewElementMode<'a>>> {
+        let (name, is_array) = match mode {
+            ElementMode::Simple(mode) => return Ok(Some(ViewElementMode::Simple(mode.item))),
+            ElementMode::Record(name) => (name, false),
+            ElementMode::Array(name) => (name, true),
+        };
+        let Some(resolved_name) =
+            as_fatal(self.name_resolve(scope, name.span, &mut name.item, diagnostics))?
+        else {
+            return Ok(None);
+        };
+        let view = match resolved_name {
+            ResolvedName::Final(ent) => ViewEnt::from_any(ent),
+            _ => None,
+        };
+        let Some(view) = view else {
+            diagnostics.push(Diagnostic::mismatched_kinds(
+                name.span.pos(self.ctx),
+                "Expected view",
+            ));
+            return Ok(None);
+        };
+        Ok(Some(if is_array {
+            ViewElementMode::Array(view, false)
+        } else {
+            ViewElementMode::Record(view, false)
+        }))
+    }
+
+    /// LRM 6.5.2: A record element with a nested view must have the type of that view,
+    /// or be an array of that type if the view is given in parentheses.
+    fn check_view_element_type(
+        &self,
+        record_element: &RecordElement<'a>,
+        mode: ViewElementMode<'a>,
+        ast_mode: &ElementMode,
+        diagnostics: &mut dyn DiagnosticHandler,
+    ) {
+        let element_type = record_element.type_mark().base_type();
+        let (view, expected) = match (mode, ast_mode) {
+            (ViewElementMode::Record(view, _), ElementMode::Record(name)) => (view, name),
+            (ViewElementMode::Array(view, _), ElementMode::Array(name)) => (view, name),
+            _ => return,
+        };
+        let view_type = view.subtype().base_type();
+        let matches = match mode {
+            ViewElementMode::Array(..) => matches!(
+                element_type.kind(),
+                Type::Array { elem_type, .. } if elem_type.base_type() == view_type
+            ),
+            _ => element_type == view_type,
+        };
+        if !matches {
+            let expected_type = if matches!(mode, ViewElementMode::Array(..)) {
+                format!("an array of {}", view_type.describe())
+            } else {
+                view_type.describe()
+            };
+            diagnostics.add(
+                expected.span.pos(self.ctx),
+                format!(
+                    "{} is {}, but the view requires {}",
+                    record_element.describe(),
+                    element_type.describe(),
+                    expected_type
+                ),
+                ErrorCode::TypeMismatch,
+            );
         }
-        Ok(())
     }
 
     fn find_deferred_constant_declaration(
@@ -860,6 +1094,7 @@ impl<'a> AnalyzeContext<'a, '_> {
                 | EntityClass::Literal
                 | EntityClass::Units
                 | EntityClass::File
+                | EntityClass::Group
                 | EntityClass::Label => {
                     if ent.parent != Some(parent) {
                         diagnostics.add(
@@ -916,19 +1151,61 @@ impl<'a> AnalyzeContext<'a, '_> {
             InterfaceDeclaration::Object(ref mut object_decl) => {
                 self.analyze_interface_object_declaration(scope, parent, object_decl, diagnostics)?
             }
-            InterfaceDeclaration::Type(ref mut ident) => {
+            InterfaceDeclaration::Type(ref mut decl) => {
+                let class = match decl.definition.as_mut().map(|def| &mut def.item) {
+                    None | Some(IncompleteTypeDefinition::Private) => InterfaceTypeClass::Private,
+                    Some(IncompleteTypeDefinition::Scalar) => InterfaceTypeClass::Scalar,
+                    Some(IncompleteTypeDefinition::Discrete) => InterfaceTypeClass::Discrete,
+                    Some(IncompleteTypeDefinition::Integer) => InterfaceTypeClass::Integer,
+                    Some(IncompleteTypeDefinition::Floating) => InterfaceTypeClass::Floating,
+                    Some(IncompleteTypeDefinition::Physical) => InterfaceTypeClass::Physical,
+                    // Composite, access and file generic types are only resolved for now
+                    // and get the operations of a private type.
+                    Some(IncompleteTypeDefinition::Array(indexes, _, subtype)) => {
+                        for index in indexes.iter_mut() {
+                            as_fatal(self.analyze_array_index(scope, index, diagnostics))?;
+                        }
+                        as_fatal(self.resolve_subtype_indication(scope, subtype, diagnostics))?;
+                        InterfaceTypeClass::Private
+                    }
+                    Some(IncompleteTypeDefinition::Access(subtype)) => {
+                        as_fatal(self.resolve_subtype_indication(scope, subtype, diagnostics))?;
+                        InterfaceTypeClass::Private
+                    }
+                    Some(IncompleteTypeDefinition::File(type_mark)) => {
+                        as_fatal(self.type_name(
+                            scope,
+                            type_mark.span,
+                            &mut type_mark.item,
+                            diagnostics,
+                        ))?;
+                        InterfaceTypeClass::Private
+                    }
+                };
                 let typ = TypeEnt::from_any(self.define(
-                    ident,
+                    &mut decl.ident,
                     parent,
-                    AnyEntKind::Type(Type::Interface),
+                    AnyEntKind::Type(Type::Interface(class)),
                     span,
                 ))
                 .unwrap();
 
-                let implicit = [
-                    self.comparison(Operator::EQ, typ),
-                    self.comparison(Operator::NE, typ),
-                ];
+                let implicit: Vec<_> = match class {
+                    InterfaceTypeClass::Private => vec![
+                        self.comparison(Operator::EQ, typ),
+                        self.comparison(Operator::NE, typ),
+                    ],
+                    InterfaceTypeClass::Scalar | InterfaceTypeClass::Discrete => {
+                        self.comparators(typ).collect()
+                    }
+                    InterfaceTypeClass::Integer => self
+                        .numeric_implicits(UniversalType::Integer, typ)
+                        .collect(),
+                    InterfaceTypeClass::Floating => {
+                        self.numeric_implicits(UniversalType::Real, typ).collect()
+                    }
+                    InterfaceTypeClass::Physical => self.physical_implicits(typ).collect(),
+                };
 
                 for ent in implicit {
                     unsafe {
@@ -1017,9 +1294,15 @@ impl<'a> AnalyzeContext<'a, '_> {
                 ModeIndication::View(view) => {
                     let (view_ent, subtype) =
                         self.analyze_mode_indication(scope, object, view, diagnostics)?;
+                    let mode = InterfaceMode::View(view_ent);
                     Object {
                         class: ObjectClass::Signal,
-                        iface: Some(ObjectInterface::Port(InterfaceMode::View(view_ent))),
+                        iface: Some(match object_decl.list_type {
+                            InterfaceType::Parameter => ObjectInterface::Parameter(mode),
+                            InterfaceType::Port | InterfaceType::Generic => {
+                                ObjectInterface::Port(mode)
+                            }
+                        }),
                         subtype,
                         has_default: false,
                     }
@@ -1282,6 +1565,8 @@ fn get_entity_class(ent: EntRef<'_>) -> Option<EntityClass> {
             Design::Context(_) => None,
         },
         AnyEntKind::View(_) => None,
+        AnyEntKind::GroupTemplate(_) => None,
+        AnyEntKind::Group => Some(EntityClass::Group),
     }
 }
 

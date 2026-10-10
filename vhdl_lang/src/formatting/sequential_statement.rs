@@ -8,8 +8,8 @@
 use crate::ast::token_range::WithTokenSpan;
 use crate::ast::{
     AssignmentRightHand, CaseStatement, Choice, DelayMechanism, Expression, Ident, IterationScheme,
-    LabeledSequentialStatement, LoopStatement, ReportStatement, SequentialStatement,
-    SignalAssignment, WaitStatement, WithRef,
+    LabeledSequentialStatement, LoopStatement, ReportStatement, SequentialBlockStatement,
+    SequentialStatement, SignalAssignment, WaitStatement, WithRef,
 };
 use crate::formatting::buffer::Buffer;
 use crate::{HasTokenSpan, TokenSpan};
@@ -90,6 +90,7 @@ impl VHDLFormatter<'_> {
             Loop(loop_statement) => {
                 self.format_loop_statement(loop_statement, span, buffer);
             }
+            Block(block) => self.format_sequential_block_statement(block, span, buffer),
             Next(next_statement) => self.format_next_statement(next_statement, span, buffer),
             Exit(exit_statement) => self.format_exit_statement(exit_statement, span, buffer),
 
@@ -372,6 +373,29 @@ impl VHDLFormatter<'_> {
         self.format_token_id(span.end_token, buffer);
     }
 
+    pub fn format_sequential_block_statement(
+        &self,
+        block: &SequentialBlockStatement,
+        span: TokenSpan,
+        buffer: &mut Buffer,
+    ) {
+        // block
+        self.format_token_id(span.start_token, buffer);
+        if let Some(is_token) = block.is_token {
+            buffer.push_whitespace();
+            self.format_token_id(is_token, buffer);
+        }
+        indented!(buffer, { self.format_declarations(&block.decl, buffer) });
+        buffer.line_break();
+        self.format_token_id(block.begin_token, buffer);
+        self.format_sequential_statements(&block.statements, buffer);
+        buffer.line_break();
+        // end block [label]
+        self.format_token_span(TokenSpan::new(block.end_token, span.end_token - 1), buffer);
+        // ;
+        self.format_token_id(span.end_token, buffer);
+    }
+
     pub fn format_loop_statement(
         &self,
         statement: &LoopStatement,
@@ -459,8 +483,9 @@ impl VHDLFormatter<'_> {
 
 #[cfg(test)]
 mod tests {
-    use crate::formatting::test_utils::check_formatted;
+    use crate::formatting::test_utils::{check_formatted, check_formatted_std};
     use crate::syntax::test::Code;
+    use crate::VHDLStandard;
 
     fn check_statement(input: &str) {
         check_formatted(
@@ -474,6 +499,30 @@ mod tests {
     fn check_statements(inputs: &[&str]) {
         for input in inputs {
             check_statement(input)
+        }
+    }
+
+    #[test]
+    fn sequential_block_statement() {
+        for input in [
+            "\
+blk: block is
+    variable v: natural;
+begin
+    v := 1;
+end block blk;",
+            "\
+block
+begin
+end block;",
+        ] {
+            check_formatted_std(
+                input,
+                input,
+                VHDLStandard::VHDL2019,
+                Code::sequential_statement,
+                |formatter, ast, buffer| formatter.format_labeled_sequential_statement(ast, buffer),
+            );
         }
     }
 

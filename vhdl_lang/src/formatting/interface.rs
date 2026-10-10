@@ -16,7 +16,7 @@ use crate::formatting::VHDLFormatter;
 use crate::syntax::Kind;
 use crate::{indented, HasTokenSpan, TokenAccess};
 use vhdl_lang::ast::token_range::WithTokenSpan;
-use vhdl_lang::ast::{InterfaceFileDeclaration, ModeViewIndication};
+use vhdl_lang::ast::{IncompleteTypeDefinition, InterfaceFileDeclaration, ModeViewIndication};
 use vhdl_lang::TokenSpan;
 
 impl VHDLFormatter<'_> {
@@ -118,14 +118,56 @@ impl VHDLFormatter<'_> {
             Object(object) => self.format_interface_object(object, buffer),
             File(file) => self.format_interface_file_declaration(file, buffer),
             Type(type_decl) => {
-                self.format_token_id(type_decl.tree.token - 1, buffer);
+                // type
+                self.format_token_id(type_decl.ident.tree.token - 1, buffer);
                 buffer.push_whitespace();
-                self.format_ident(type_decl, buffer);
+                self.format_ident(&type_decl.ident, buffer);
+                if let Some(definition) = &type_decl.definition {
+                    buffer.push_whitespace();
+                    // is
+                    self.format_token_id(definition.span.start_token - 1, buffer);
+                    buffer.push_whitespace();
+                    self.format_incomplete_type_definition(definition, buffer);
+                }
             }
             Subprogram(subprogram) => {
                 self.format_interface_subprogram_declaration(subprogram, buffer)
             }
             Package(package) => self.format_interface_package_declaration(package, buffer),
+        }
+    }
+
+    fn format_incomplete_type_definition(
+        &self,
+        definition: &WithTokenSpan<IncompleteTypeDefinition>,
+        buffer: &mut Buffer,
+    ) {
+        let span = definition.span;
+        match &definition.item {
+            IncompleteTypeDefinition::Discrete => self.join_token_span(span, buffer),
+            IncompleteTypeDefinition::Array(indexes, of_token, subtype) => {
+                self.format_array_type_declaration(indexes, *of_token, subtype, span, buffer)
+            }
+            IncompleteTypeDefinition::Access(subtype) => {
+                // access
+                self.format_token_id(span.start_token, buffer);
+                buffer.push_whitespace();
+                self.format_subtype_indication(subtype, buffer);
+            }
+            IncompleteTypeDefinition::File(type_mark) => {
+                // file of
+                self.format_token_span(
+                    TokenSpan::new(span.start_token, span.start_token + 1),
+                    buffer,
+                );
+                buffer.push_whitespace();
+                self.format_name(type_mark.as_ref(), buffer);
+            }
+            IncompleteTypeDefinition::Private
+            | IncompleteTypeDefinition::Scalar
+            | IncompleteTypeDefinition::Integer
+            | IncompleteTypeDefinition::Physical
+            | IncompleteTypeDefinition::Floating => self.format_token_span(span, buffer),
         }
     }
 
@@ -360,6 +402,32 @@ mod tests {
         check_port("signal foo: view (bar)");
         check_port("signal foo: view bar of baz");
         check_port("signal foo: view (bar) of baz");
+    }
+
+    #[test]
+    fn format_generic_type_definitions() {
+        for input in [
+            "type t",
+            "type t is private",
+            "type t is <>",
+            "type t is (<>)",
+            "type t is range <>",
+            "type t is units <>",
+            "type t is range <> . <>",
+            "type t is access natural",
+            "type t is file of natural",
+            "type t is array (natural range <>) of bit",
+        ] {
+            check_formatted_std(
+                input,
+                input,
+                VHDL2019,
+                Code::generic,
+                |formatter, interface, buffer| {
+                    formatter.format_interface_declaration(interface, buffer)
+                },
+            );
+        }
     }
 
     #[test]

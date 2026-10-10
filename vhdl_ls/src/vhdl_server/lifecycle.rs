@@ -86,6 +86,13 @@ impl VHDLServer {
             workspace_symbol_provider: Some(OneOf::Left(true)),
             document_symbol_provider: Some(OneOf::Left(true)),
             document_highlight_provider: Some(OneOf::Left(true)),
+            document_formatting_provider: Some(OneOf::Left(true)),
+            folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+            signature_help_provider: Some(SignatureHelpOptions {
+                trigger_characters: Some(vec!["(".to_owned(), ",".to_owned()]),
+                retrigger_characters: None,
+                work_done_progress_options: Default::default(),
+            }),
             semantic_tokens_provider: Some(
                 SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
                     legend: SemanticTokensLegend {

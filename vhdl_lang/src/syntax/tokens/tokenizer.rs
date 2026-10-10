@@ -205,6 +205,13 @@ pub enum Kind {
     LeftSquare,
     #[strum(serialize = "]")]
     RightSquare,
+    // PSL
+    #[strum(serialize = "{")]
+    LeftCurly,
+    #[strum(serialize = "}")]
+    RightCurly,
+    #[strum(serialize = "!")]
+    Exclamation,
     #[strum(serialize = ";")]
     SemiColon,
     #[strum(serialize = ":")]
@@ -1792,6 +1799,7 @@ pub struct Symbols {
     symtab: SymbolTable,
     keywords: Vec<Kind>,
     attributes: FnvHashMap<Symbol, AttributeDesignator>,
+    standard: VHDLStandard,
 }
 
 impl Symbols {
@@ -1832,7 +1840,12 @@ impl Symbols {
             symtab,
             keywords,
             attributes,
+            standard: version,
         }
+    }
+
+    pub fn standard(&self) -> VHDLStandard {
+        self.standard
     }
 }
 
@@ -2104,6 +2117,18 @@ impl<'a> Tokenizer<'a> {
                 self.reader.skip();
                 (RightSquare, Value::None)
             }
+            b'{' => {
+                self.reader.skip();
+                (LeftCurly, Value::None)
+            }
+            b'}' => {
+                self.reader.skip();
+                (RightCurly, Value::None)
+            }
+            b'!' => {
+                self.reader.skip();
+                (Exclamation, Value::None)
+            }
             b'\\' => {
                 self.reader.skip();
                 // LRM 15.4.3 Extended identifers
@@ -2206,6 +2231,10 @@ impl<'a> Tokenizer<'a> {
     #[allow(dead_code)]
     pub fn get_final_comments(&self) -> Option<Vec<Comment>> {
         self.final_comments.clone()
+    }
+
+    pub fn standard(&self) -> VHDLStandard {
+        self.symbols.standard()
     }
 
     pub fn text_until_newline(&mut self) -> DiagnosticResult<Token> {
@@ -3276,6 +3305,10 @@ my_other_ident",
     #[test]
     fn tokenize_squares() {
         assert_eq!(kinds_tokenize("[]"), vec![LeftSquare, RightSquare]);
+        assert_eq!(
+            kinds_tokenize("{}!"),
+            vec![LeftCurly, RightCurly, Exclamation]
+        );
     }
 
     #[test]
@@ -3406,7 +3439,7 @@ comment
 
     #[test]
     fn tokenize_illegal() {
-        let code = Code::new("begin!end");
+        let code = Code::new("begin$end");
         let (tokens, diagnostics, _) = code.tokenize_result();
         assert_eq!(
             tokens,
@@ -3427,7 +3460,7 @@ comment
         );
         assert_eq!(
             diagnostics,
-            vec![Diagnostic::syntax_error(code.s1("!"), "Illegal token")],
+            vec![Diagnostic::syntax_error(code.s1("$"), "Illegal token")],
         );
     }
 

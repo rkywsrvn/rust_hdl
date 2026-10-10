@@ -7,18 +7,23 @@
 use crate::ast::ExternalObjectClass;
 use crate::ast::{
     AliasDeclaration, AnyDesignUnit, AnyPrimaryUnit, AnySecondaryUnit, Attribute,
-    AttributeDeclaration, AttributeSpecification, ComponentDeclaration, Designator, HasIdent,
-    Ident, InterfacePackageDeclaration, ModeViewDeclaration, ObjectClass, PackageInstantiation,
-    SubprogramBody, SubprogramInstantiation, SubprogramSpecification, TypeDeclaration, WithDecl,
+    AttributeDeclaration, AttributeSpecification, ComponentDeclaration, Designator,
+    GroupTemplateEntry, HasIdent, Ident, InterfacePackageDeclaration, ModeViewDeclaration,
+    ObjectClass, PackageInstantiation, SubprogramBody, SubprogramInstantiation,
+    SubprogramSpecification, TypeDeclaration, WithDecl,
 };
 use crate::data::*;
 mod types;
 use fnv::FnvHashMap;
-pub use types::{BaseType, Subtype, Type, TypeEnt, TypedSelection, UniversalType};
+pub use types::{
+    BaseType, InterfaceTypeClass, Subtype, Type, TypeEnt, TypedSelection, UniversalType,
+};
 mod overloaded;
 pub use overloaded::{Overloaded, OverloadedEnt, Signature, SignatureKey, SubprogramKey};
 mod object;
-pub use object::{InterfaceMode, Object, ObjectEnt, ObjectInterface, ViewEnt};
+pub use object::{
+    InterfaceMode, Object, ObjectEnt, ObjectInterface, View, ViewElementMode, ViewEnt,
+};
 mod design;
 pub use design::{Design, DesignEnt, InterfacePackageMapKind};
 mod attribute;
@@ -126,7 +131,11 @@ pub enum AnyEntKind<'a> {
     Design(Design<'a>),
     /// A VHDL 2019 View.
     /// The [Subtype] data is the type of the associated record.
-    View(Subtype<'a>),
+    View(View<'a>),
+    /// LRM 6.9 Group template
+    GroupTemplate(Vec<GroupTemplateEntry>),
+    /// LRM 6.10 Group
+    Group,
 }
 
 impl<'a> AnyEntKind<'a> {
@@ -203,6 +212,8 @@ impl<'a> AnyEntKind<'a> {
             Design(design) => design.describe(),
             Type(typ) => typ.describe(),
             View(..) => "view",
+            GroupTemplate(..) => "group template",
+            Group => "group",
         }
     }
 }
@@ -868,6 +879,7 @@ pub enum Sequential {
     Loop,
     If,
     Case,
+    Block,
 }
 
 impl Sequential {
@@ -876,6 +888,7 @@ impl Sequential {
             Sequential::Case => "case statement",
             Sequential::If => "if statement",
             Sequential::Loop => "loop statement",
+            Sequential::Block => "block statement",
         }
     }
 }

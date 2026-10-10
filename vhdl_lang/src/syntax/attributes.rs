@@ -17,7 +17,7 @@ use crate::syntax::expression::parse_conditional_expression;
 use crate::syntax::recover::expect_semicolon_or_last;
 use vhdl_lang::syntax::parser::ParsingContext;
 
-fn parse_entity_class(ctx: &mut ParsingContext<'_>) -> ParseResult<EntityClass> {
+pub fn parse_entity_class(ctx: &mut ParsingContext<'_>) -> ParseResult<EntityClass> {
     Ok(expect_token!(ctx.stream, token,
         Entity => EntityClass::Entity,
         Architecture => EntityClass::Architecture,
@@ -34,6 +34,7 @@ fn parse_entity_class(ctx: &mut ParsingContext<'_>) -> ParseResult<EntityClass> 
         Label => EntityClass::Label,
         Literal => EntityClass::Literal,
         Units => EntityClass::Units,
+        Group => EntityClass::Group,
         File => EntityClass::File
     ))
 }

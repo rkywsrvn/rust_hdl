@@ -183,8 +183,9 @@ unnecessary_work_library = false # Disable linting for the 'library work;' state
 ## Ignoring errors
 
 You can use the comment-pair `-- vhdl_ls off` and `-- vhdl_ls on` to conditionally disable and re-enable parsing of
-source code. This can be helpful to ignore errors from correct code that vhdl_ls does not yet support, i.e., PSL
-statements or certain VHDL-2019 constructs.
+source code. This can be helpful to ignore errors from correct code that vhdl_ls does not yet support.
+
+PSL directives, declarations and verification units are skipped. VHDL-LS does not analyze them.
 
 ```vhdl
 library ieee;
@@ -203,6 +204,20 @@ begin
     -- vhdl_ls on
 end architecture;
 ```
+
+## Conditional analysis
+
+VHDL-LS evaluates the conditional analysis directives `` `if ``, `` `elsif ``, `` `else `` and `` `end if ``.
+It reports `` `warning `` and `` `error `` directives as diagnostics. The identifiers have these values:
+
+| Identifier     | Value                                        |
+|----------------|----------------------------------------------|
+| `VHDL_VERSION` | The configured standard, for example `"2008"` |
+| `TOOL_TYPE`    | `"SIMULATION"`                               |
+| `TOOL_VENDOR`  | `"VHDL-LS"`                                  |
+| `TOOL_NAME`    | `"vhdl_ls"`                                  |
+| `TOOL_EDITION` | `""`                                         |
+| `TOOL_VERSION` | The version of VHDL-LS                       |
 
 ## As an LSP-client developer how should I integrate VHDL-LS?
 

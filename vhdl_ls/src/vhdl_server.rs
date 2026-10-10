@@ -6,9 +6,12 @@
 
 mod completion;
 mod diagnostics;
+mod folding;
+mod formatting;
 mod lifecycle;
 mod rename;
 pub(crate) mod semantic_tokens;
+mod signature_help;
 mod text_document;
 mod workspace;
 
@@ -466,7 +469,7 @@ fn type_kind(t: &Type) -> SymbolKind {
         vhdl_lang::Type::Subtype(t) => type_kind(t.type_mark().kind()),
         vhdl_lang::Type::Protected(_, _) => SymbolKind::CLASS,
         vhdl_lang::Type::File => SymbolKind::FILE,
-        vhdl_lang::Type::Interface => SymbolKind::TYPE_PARAMETER,
+        vhdl_lang::Type::Interface(_) => SymbolKind::TYPE_PARAMETER,
         vhdl_lang::Type::Alias(t) => type_kind(t.kind()),
         vhdl_lang::Type::Universal(_) => SymbolKind::NUMBER,
     }
@@ -492,6 +495,7 @@ fn to_symbol_kind(kind: &AnyEntKind) -> SymbolKind {
         AnyEntKind::Concurrent(..) => SymbolKind::NAMESPACE,
         AnyEntKind::Library => SymbolKind::NAMESPACE,
         AnyEntKind::View(_) => SymbolKind::INTERFACE,
+        AnyEntKind::GroupTemplate(_) | AnyEntKind::Group => SymbolKind::NAMESPACE,
         AnyEntKind::Design(d) => match d {
             vhdl_lang::Design::Entity(_, _) => SymbolKind::MODULE,
             vhdl_lang::Design::Architecture(..) => SymbolKind::MODULE,
@@ -1015,7 +1019,7 @@ lib.files = [
         });
     }
 
-    fn std_lib_config() -> String {
+    pub(crate) fn std_lib_config() -> String {
         format!(
             "[libraries]\nstd.files = ['{}/../vhdl_libraries/std/*.vhd']\nlib.files = ['*.vhd']\n",
             std::env::var("CARGO_MANIFEST_DIR").unwrap()

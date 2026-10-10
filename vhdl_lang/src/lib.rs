@@ -25,6 +25,7 @@ mod syntax;
 
 mod completion;
 mod formatting;
+mod signature_help;
 mod standard;
 
 pub use crate::config::{Case, Config};
@@ -32,12 +33,12 @@ pub use crate::data::{
     Diagnostic, Latin1String, Message, MessageHandler, MessagePrinter, MessageType,
     NullDiagnostics, NullMessages, Position, Range, Severity, SeverityMap, Source, SrcPos,
 };
-pub use formatting::VHDLFormatter;
+pub use formatting::{format_source, FormatError, VHDLFormatter};
 
 pub use crate::analysis::EntHierarchy;
 pub use crate::named_entity::{
     AnyEnt, AnyEntKind, Concurrent, Design, EntRef, EntityId, HasEntityId, InterfaceEnt, Object,
-    Overloaded, Reference, Related, Sequential, Type,
+    Overloaded, OverloadedEnt, Reference, Related, Sequential, Type,
 };
 
 pub use crate::project::{Project, SourceFile};
@@ -46,4 +47,5 @@ pub use crate::syntax::{
 };
 
 pub use completion::{list_completion_options, CompletionItem};
+pub use signature_help::{signature_help, Argument, SignatureHelp};
 pub use standard::VHDLStandard;

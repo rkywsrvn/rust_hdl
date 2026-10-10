@@ -7,18 +7,20 @@
 use super::common::ParseResult;
 use super::names::{
     parse_association_list_no_leftpar, parse_identifier_list, parse_name, parse_selected_name,
+    parse_type_mark,
 };
 use super::object_declaration::parse_optional_assignment;
 use super::subprogram::parse_subprogram_specification;
 use super::subtype_indication::parse_subtype_indication;
 use super::tokens::{Kind::*, *};
+use super::type_declaration::parse_array_index_constraints;
 use crate::ast::token_range::{WithToken, WithTokenSpan};
 /// LRM 6.5 Interface declarations
 use crate::ast::*;
 use crate::data::*;
 use itertools::Itertools;
 use vhdl_lang::syntax::parser::ParsingContext;
-use vhdl_lang::VHDLStandard::VHDL2019;
+use vhdl_lang::VHDLStandard::{self, VHDL2019};
 
 pub(crate) fn parse_optional_mode(
     ctx: &mut ParsingContext<'_>,
@@ -115,6 +117,22 @@ fn parse_interface_object_declaration(
 
     let colon_token = ctx.stream.expect_kind(Colon)?;
     let mode = if ctx.stream.next_kind_is(View) {
+        // LRM 6.5.2: Only interface signal declarations may have a mode view indication.
+        if list_type == InterfaceType::Generic {
+            return Err(Diagnostic::syntax_error(
+                ctx.stream.peek_expect()?.pos.clone(),
+                "Generic list does not allow mode views",
+            ));
+        }
+        if let Some(class) = explicit_object_class
+            .as_ref()
+            .filter(|class| class.item != ObjectClass::Signal)
+        {
+            return Err(Diagnostic::syntax_error(
+                ctx.get_pos(class.token),
+                "Only signals may have a mode view",
+            ));
+        }
         ModeIndication::View(parse_view_mode_indication(ctx)?)
     } else {
         ModeIndication::Simple(parse_simple_mode_indication(
@@ -283,6 +301,57 @@ fn parse_interface_package(
     })
 }
 
+/// LRM 6.5.3 Incomplete type definition of a generic type, starting at `is`
+fn parse_incomplete_type_definition(
+    ctx: &mut ParsingContext<'_>,
+) -> ParseResult<WithTokenSpan<IncompleteTypeDefinition>> {
+    let is_token = ctx.stream.expect_kind(Is)?;
+    if ctx.standard < VHDLStandard::VHDL2019 {
+        ctx.diagnostics.push(Diagnostic::syntax_error(
+            ctx.get_pos(is_token),
+            "Generic type definitions require VHDL-2019",
+        ));
+    }
+    let start_token = ctx.stream.get_current_token_id();
+    let definition = expect_token!(ctx.stream, token,
+        Private => IncompleteTypeDefinition::Private,
+        BOX => IncompleteTypeDefinition::Scalar,
+        LeftPar => {
+            ctx.stream.expect_kind(BOX)?;
+            ctx.stream.expect_kind(RightPar)?;
+            IncompleteTypeDefinition::Discrete
+        },
+        Range => {
+            ctx.stream.expect_kind(BOX)?;
+            if ctx.stream.skip_if_kind(Dot) {
+                ctx.stream.expect_kind(BOX)?;
+                IncompleteTypeDefinition::Floating
+            } else {
+                IncompleteTypeDefinition::Integer
+            }
+        },
+        Units => {
+            ctx.stream.expect_kind(BOX)?;
+            IncompleteTypeDefinition::Physical
+        },
+        Array => {
+            let indexes = parse_array_index_constraints(ctx)?;
+            let of_token = ctx.stream.expect_kind(Of)?;
+            IncompleteTypeDefinition::Array(indexes, of_token, parse_subtype_indication(ctx)?)
+        },
+        Access => IncompleteTypeDefinition::Access(parse_subtype_indication(ctx)?),
+        File => {
+            ctx.stream.expect_kind(Of)?;
+            IncompleteTypeDefinition::File(parse_type_mark(ctx)?)
+        }
+    );
+    let end_token = ctx.stream.get_last_token_id();
+    Ok(WithTokenSpan::new(
+        definition,
+        TokenSpan::new(start_token, end_token),
+    ))
+}
+
 fn parse_interface_declaration(
     ctx: &mut ParsingContext<'_>,
     list_type: InterfaceType,
@@ -296,7 +365,15 @@ fn parse_interface_declaration(
         Type => {
             ctx.stream.skip();
             let ident = ctx.stream.expect_ident()?;
-            Ok(InterfaceDeclaration::Type(WithDecl::new(ident)))
+            let definition = if ctx.stream.next_kind_is(Is) {
+                Some(parse_incomplete_type_definition(ctx)?)
+            } else {
+                None
+            };
+            Ok(InterfaceDeclaration::Type(InterfaceTypeDeclaration {
+                ident: WithDecl::new(ident),
+                definition,
+            }))
         },
         Function | Procedure | Impure | Pure => {
             let spec = parse_subprogram_specification(ctx)?;
@@ -972,7 +1049,63 @@ bar : natural)",
         let code = Code::new("type name");
         assert_eq!(
             code.with_stream(parse_generic),
-            InterfaceDeclaration::Type(code.s1("name").decl_ident())
+            InterfaceDeclaration::Type(InterfaceTypeDeclaration {
+                ident: code.s1("name").decl_ident(),
+                definition: None,
+            })
+        );
+    }
+
+    #[test]
+    fn parses_generic_type_definitions() {
+        for (code, expected) in [
+            ("type t is private", IncompleteTypeDefinition::Private),
+            ("type t is <>", IncompleteTypeDefinition::Scalar),
+            ("type t is (<>)", IncompleteTypeDefinition::Discrete),
+            ("type t is range <>", IncompleteTypeDefinition::Integer),
+            ("type t is units <>", IncompleteTypeDefinition::Physical),
+            (
+                "type t is range <> . <>",
+                IncompleteTypeDefinition::Floating,
+            ),
+        ] {
+            let code = Code::with_standard(code, VHDL2019);
+            let InterfaceDeclaration::Type(decl) = code.with_stream_no_diagnostics(parse_generic)
+            else {
+                panic!("expected an interface type declaration");
+            };
+            assert_eq!(
+                decl.definition.map(|definition| definition.item),
+                Some(expected)
+            );
+        }
+    }
+
+    #[test]
+    fn parses_generic_access_and_file_types() {
+        let code = Code::with_standard("type t is access natural", VHDL2019);
+        let InterfaceDeclaration::Type(decl) = code.with_stream_no_diagnostics(parse_generic)
+        else {
+            panic!("expected an interface type declaration");
+        };
+        assert_eq!(
+            decl.definition.map(|definition| definition.item),
+            Some(IncompleteTypeDefinition::Access(
+                code.s1("natural").subtype_indication()
+            ))
+        );
+    }
+
+    #[test]
+    fn generic_type_definitions_require_vhdl2019() {
+        let code = Code::new("type t is range <>");
+        let (_, diagnostics) = code.with_partial_stream_diagnostics(parse_generic);
+        assert_eq!(
+            diagnostics,
+            vec![Diagnostic::syntax_error(
+                code.s1("is"),
+                "Generic type definitions require VHDL-2019"
+            )]
         );
     }
 

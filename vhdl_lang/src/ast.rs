@@ -442,11 +442,6 @@ pub struct ElementDeclaration {
 }
 
 /// LRM 5.6.2 Protected type declarations
-#[derive(PartialEq, Debug, Clone)]
-pub enum ProtectedTypeDeclarativeItem {
-    Subprogram(SubprogramDeclaration),
-}
-
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum Designator {
     Identifier(Symbol),
@@ -562,7 +557,7 @@ pub enum EntityClass {
     Label,
     Literal,
     Units,
-    // Group
+    Group,
     File,
     // Property
     // Sequence
@@ -588,7 +583,7 @@ pub enum Attribute {
 /// LRM 5.6.2 Protected type declarations
 #[derive(PartialEq, Debug, Clone)]
 pub struct ProtectedTypeDeclaration {
-    pub items: Vec<ProtectedTypeDeclarativeItem>,
+    pub items: Vec<WithTokenSpan<Declaration>>,
 }
 
 /// LRM 5.6.3 Protected type bodies
@@ -871,11 +866,53 @@ pub struct InterfaceSubprogramDeclaration {
 pub enum InterfaceDeclaration {
     Object(InterfaceObjectDeclaration),
     File(InterfaceFileDeclaration),
-    Type(WithDecl<Ident>),
+    Type(InterfaceTypeDeclaration),
     /// LRM 6.5.4 Interface subprogram declarations
     Subprogram(InterfaceSubprogramDeclaration),
     /// LRM 6.5.5 Interface package declaration
     Package(InterfacePackageDeclaration),
+}
+
+/// LRM 6.5.3 Interface type declarations
+#[derive(PartialEq, Debug, Clone)]
+pub struct InterfaceTypeDeclaration {
+    pub ident: WithDecl<Ident>,
+    /// The VHDL-2019 incomplete type definition after `is`
+    pub definition: Option<WithTokenSpan<IncompleteTypeDefinition>>,
+}
+
+impl HasTokenSpan for InterfaceTypeDeclaration {
+    fn get_start_token(&self) -> TokenId {
+        self.ident.get_start_token()
+    }
+
+    fn get_end_token(&self) -> TokenId {
+        self.definition
+            .as_ref()
+            .map_or(self.ident.get_end_token(), |definition| {
+                definition.span.end_token
+            })
+    }
+}
+
+/// LRM 6.5.3 Incomplete type definitions of generic types (VHDL-2019)
+#[derive(PartialEq, Debug, Clone)]
+pub enum IncompleteTypeDefinition {
+    /// `private`
+    Private,
+    /// `<>`
+    Scalar,
+    /// `(<>)`
+    Discrete,
+    /// `range <>`
+    Integer,
+    /// `units <>`
+    Physical,
+    /// `range <> . <>`
+    Floating,
+    Array(Vec<ArrayIndex>, TokenId, SubtypeIndication),
+    Access(SubtypeIndication),
+    File(WithTokenSpan<Name>),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Default)]
@@ -914,12 +951,19 @@ pub enum Declaration {
     Use(UseClause),
     Package(PackageInstantiation),
     Configuration(ConfigurationSpecification),
+    Disconnection(DisconnectionSpecification),
+    GroupTemplate(GroupTemplateDeclaration),
+    Group(GroupDeclaration),
     View(ModeViewDeclaration),
 }
 
 impl Declaration {
     pub fn declarations(&self) -> Vec<EntityId> {
         match self {
+            Declaration::GroupTemplate(GroupTemplateDeclaration { ident, .. })
+            | Declaration::Group(GroupDeclaration { ident, .. }) => {
+                ident.decl.get().into_iter().collect()
+            }
             Declaration::Object(ObjectDeclaration { idents, .. })
             | Declaration::File(FileDeclaration { idents, .. }) => {
                 idents.iter().flat_map(|ident| ident.decl.get()).collect()
@@ -1115,6 +1159,17 @@ pub struct LoopStatement {
     pub end_label_pos: Option<SrcPos>,
 }
 
+/// LRM 10.13 Sequential block statement (VHDL-2019)
+#[derive(PartialEq, Debug, Clone)]
+pub struct SequentialBlockStatement {
+    pub is_token: Option<TokenId>,
+    pub decl: Vec<WithTokenSpan<Declaration>>,
+    pub begin_token: TokenId,
+    pub statements: Vec<LabeledSequentialStatement>,
+    pub end_token: TokenId,
+    pub end_label_pos: Option<SrcPos>,
+}
+
 /// LRM 10.11 Next statement
 #[derive(PartialEq, Debug, Clone)]
 pub struct NextStatement {
@@ -1149,6 +1204,7 @@ pub enum SequentialStatement {
     If(IfStatement),
     Case(CaseStatement),
     Loop(LoopStatement),
+    Block(SequentialBlockStatement),
     Next(NextStatement),
     Exit(ExitStatement),
     Return(ReturnStatement),
@@ -1470,6 +1526,43 @@ pub struct BindingIndication {
     pub entity_aspect: Option<EntityAspect>,
     pub generic_map: Option<MapAspect>,
     pub port_map: Option<MapAspect>,
+}
+
+/// LRM 6.9 Group template declarations
+#[derive(PartialEq, Debug, Clone)]
+pub struct GroupTemplateDeclaration {
+    pub ident: WithDecl<Ident>,
+    pub entries: Vec<GroupTemplateEntry>,
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct GroupTemplateEntry {
+    pub class: EntityClass,
+    /// True if the entry ends with `<>`.
+    pub is_open: bool,
+}
+
+/// LRM 6.10 Group declarations
+#[derive(PartialEq, Debug, Clone)]
+pub struct GroupDeclaration {
+    pub ident: WithDecl<Ident>,
+    pub template: WithTokenSpan<Name>,
+    pub constituents: Vec<WithTokenSpan<Name>>,
+}
+
+/// LRM 7.4 Disconnection specification
+#[derive(PartialEq, Debug, Clone)]
+pub struct DisconnectionSpecification {
+    pub signals: GuardedSignalList,
+    pub type_mark: WithTokenSpan<Name>,
+    pub time: WithTokenSpan<Expression>,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum GuardedSignalList {
+    Names(Vec<WithTokenSpan<Name>>),
+    Others,
+    All,
 }
 
 /// LRM 7.3 Configuration specification

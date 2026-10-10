@@ -22,7 +22,7 @@ mod libraries;
 mod map_aspect;
 mod region;
 mod selected;
-mod tokenizer;
+pub(crate) mod tokenizer;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum CompletionItem<'a> {

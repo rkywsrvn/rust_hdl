@@ -7,6 +7,7 @@
 use std::cell::Cell;
 use vhdl_lang::syntax::parser::ParsingContext;
 
+use super::conditional_analysis::ConditionalAnalysis;
 use super::tokenizer::Kind::*;
 use super::tokenizer::*;
 use crate::ast::token_range::WithToken;
@@ -25,52 +26,32 @@ pub struct TokenStream<'a> {
 }
 
 impl<'a> TokenStream<'a> {
-    /// Special handling for a tool directive of the form
-    /// ```vhdl
-    /// `identifier { any chars until newline }
-    /// ```
-    /// This needs special handling as the text that follows the identifier is arbitrary.
-    fn handle_tool_directive(
-        grave_accent: &Token,
-        tokenizer: &mut Tokenizer<'_>,
-        diagnostics: &mut dyn DiagnosticHandler,
-    ) {
-        let start_pos = grave_accent.pos.clone();
-        match tokenizer.pop() {
-            Ok(Some(tok)) => {
-                if tok.kind != Identifier {
-                    diagnostics.push(Diagnostic::syntax_error(tok, "Expecting identifier"));
-                    let _ = tokenizer.text_until_newline(); // skip potentially invalid tokens
-                    return;
-                }
-            }
-            Err(err) => diagnostics.push(err),
-            Ok(None) => {
-                diagnostics.push(Diagnostic::syntax_error(start_pos, "Expecting identifier"));
-                return;
-            }
-        }
-        match tokenizer.text_until_newline() {
-            Ok(_) => {}
-            Err(err) => diagnostics.push(err),
-        }
-    }
-
     pub fn new(
         mut tokenizer: Tokenizer<'a>,
         diagnostics: &mut dyn DiagnosticHandler,
     ) -> TokenStream<'a> {
         let mut tokens = Vec::new();
+        let mut conditional_analysis = ConditionalAnalysis::default();
+        let standard = tokenizer.standard();
         loop {
             match tokenizer.pop() {
                 Ok(Some(token)) if token.kind == GraveAccent => {
-                    TokenStream::handle_tool_directive(&token, &mut tokenizer, diagnostics)
+                    conditional_analysis.directive(&token, &mut tokenizer, standard, diagnostics)
                 }
-                Ok(Some(token)) => tokens.push(token),
+                Ok(Some(token)) => {
+                    if conditional_analysis.is_active() {
+                        tokens.push(token)
+                    }
+                }
                 Ok(None) => break,
-                Err(err) => diagnostics.push(err),
+                Err(err) => {
+                    if conditional_analysis.is_active() {
+                        diagnostics.push(err)
+                    }
+                }
             }
         }
+        conditional_analysis.finish(diagnostics);
         for diag in tokenizer.take_diagnostics() {
             diagnostics.push(diag);
         }
@@ -194,6 +175,12 @@ impl<'a> TokenStream<'a> {
 
     pub fn next_kind_is(&self, kind: Kind) -> bool {
         self.nth_kind_is(0, kind)
+    }
+
+    pub fn nth_kind(&self, idx: usize) -> Option<Kind> {
+        self.tokens
+            .get(self.get_idx() + idx)
+            .map(|token| token.kind)
     }
 
     pub fn nth_kind_is(&self, idx: usize, kind: Kind) -> bool {

@@ -268,7 +268,12 @@ impl<'a> AnalyzeContext<'a, '_> {
                     ));
                 }
             },
-            AnyEntKind::View(typ) => AnyEntKind::View(self.map_subtype(mapping, *typ, scope)),
+            AnyEntKind::GroupTemplate(entries) => AnyEntKind::GroupTemplate(entries.clone()),
+            AnyEntKind::Group => AnyEntKind::Group,
+            AnyEntKind::View(view) => AnyEntKind::View(View {
+                subtype: self.map_subtype(mapping, view.subtype, scope),
+                elements: view.elements.clone(),
+            }),
         })
     }
 
@@ -436,7 +441,7 @@ impl<'a> AnalyzeContext<'a, '_> {
             Type::Alias(typ) => Type::Alias(self.map_type_ent(mapping, *typ, scope)),
             Type::Universal(utyp) => Type::Universal(*utyp),
             Type::Incomplete => Type::Incomplete,
-            Type::Interface => Type::Interface,
+            Type::Interface(class) => Type::Interface(*class),
         })
     }
 

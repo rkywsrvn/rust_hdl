@@ -185,7 +185,9 @@ impl<'a> ResolvedName<'a> {
                 type_mark: Some(subtype.type_mark()),
             }),
             AnyEntKind::Type(_) => ResolvedName::Type(TypeEnt::from_any(ent).unwrap()),
-            AnyEntKind::View(_) => ResolvedName::Final(ent),
+            AnyEntKind::View(_) | AnyEntKind::GroupTemplate(_) | AnyEntKind::Group => {
+                ResolvedName::Final(ent)
+            }
             AnyEntKind::Overloaded(_) => {
                 return Err((
                     "Internal error. Unreachable as overloaded is handled outside".to_owned(),
@@ -256,6 +258,8 @@ impl<'a> ResolvedName<'a> {
             }
             AnyEntKind::File(_)
             | AnyEntKind::View(_)
+            | AnyEntKind::GroupTemplate(_)
+            | AnyEntKind::Group
             | AnyEntKind::InterfaceFile(_)
             | AnyEntKind::Component(_)
             | AnyEntKind::Concurrent(..)
@@ -633,7 +637,7 @@ impl<'a> AnalyzeContext<'a, '_> {
             let resolved = as_fatal(self.name_resolve(scope, expr_pos, name, diagnostics))?;
 
             if let Some(ResolvedName::Type(typ)) = resolved {
-                return if matches!(typ.base_type().kind(), Type::Enum { .. } | Type::Integer) {
+                return if typ.base_type().is_discrete() {
                     Ok(Some(typ))
                 } else {
                     bail!(
@@ -1112,10 +1116,12 @@ impl<'a> AnalyzeContext<'a, '_> {
                 .map(|typ| ResolvedName::Type(typ.base().into())),
             AttributeDesignator::Converse => {
                 let view = self.resolve_view_ent(prefix, diagnostics, prefix_pos)?;
-                // Since we do not check the actual mode of the view,
-                // this does not actually converse anything at the moment.
-                // We only check that the selected name is a view and return that view.
-                Ok(ResolvedName::Final(view.ent))
+                let conversed = self.arena.implicit(
+                    view.ent,
+                    view.ent.designator().clone(),
+                    AnyEntKind::View(view.view().converse()),
+                );
+                Ok(ResolvedName::Final(conversed))
             }
         }
     }
@@ -1988,6 +1994,9 @@ impl Declaration {
             Declaration::Use(_) => "use",
             Declaration::Package(_) => "package instantiation",
             Declaration::Configuration(_) => "configuration",
+            Declaration::Disconnection(_) => "disconnection specification",
+            Declaration::GroupTemplate(_) => "group template",
+            Declaration::Group(_) => "group",
             Declaration::View(_) => "view",
         }
     }

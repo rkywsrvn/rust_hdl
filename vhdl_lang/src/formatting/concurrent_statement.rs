@@ -240,6 +240,10 @@ impl VHDLFormatter<'_> {
         span: TokenSpan,
         buffer: &mut Buffer,
     ) {
+        if assignment_statement.postponed {
+            self.format_token_id(span.start_token, buffer);
+            buffer.push_whitespace();
+        }
         if let AssignmentRightHand::Selected(selected) = &assignment_statement.assignment.rhs {
             // with
             self.format_token_id(selected.expression.span.start_token - 1, buffer);
@@ -253,11 +257,13 @@ impl VHDLFormatter<'_> {
         self.format_target(&assignment_statement.assignment.target, buffer);
         buffer.push_whitespace();
         // <=
-        self.format_token_id(
-            assignment_statement.assignment.target.span.end_token + 1,
-            buffer,
-        );
+        let assignment_token = assignment_statement.assignment.target.span.end_token + 1;
+        self.format_token_id(assignment_token, buffer);
         buffer.push_whitespace();
+        if assignment_statement.guarded {
+            self.format_token_id(assignment_token + 1, buffer);
+            buffer.push_whitespace();
+        }
         if let Some(mechanism) = &assignment_statement.assignment.delay_mechanism {
             self.format_delay_mechanism(mechanism, buffer);
             buffer.push_whitespace();
@@ -746,6 +752,14 @@ end process;",
         check_statement("foo <= bar(2 to 3);");
         check_statement("x <= bar(1 to 3) after 2 ns;");
         check_statement("foo <= bar(1 to 3) after 2 ns, expr after 1 ns;");
+    }
+
+    #[test]
+    fn check_postponed_and_guarded_signal_assignment() {
+        check_statement("postponed foo <= bar;");
+        check_statement("foo <= guarded bar after 2 ns;");
+        check_statement("postponed foo <= guarded bar;");
+        check_statement("postponed with x select foo <= guarded bar when others;");
     }
 
     #[test]

@@ -4,6 +4,7 @@
 //
 // Copyright (c) 2018, Olof Kraigher olof.kraigher@gmail.com
 
+use super::psl::skip_verification_unit;
 use super::tokens::{HasTokenSpan, Kind::*, TokenSpan};
 use vhdl_lang::syntax::parser::ParsingContext;
 
@@ -195,6 +196,11 @@ pub fn parse_design_file(ctx: &mut ParsingContext<'_>) -> ParseResult<DesignFile
                     context_clause.push(ContextItem::Context(context_ref));
                 }
                 Err(diagnostic) => ctx.diagnostics.push(diagnostic),
+            },
+            Vunit | Vmode | Vprop => {
+                if let Err(diagnostic) = skip_verification_unit(ctx) {
+                    ctx.diagnostics.push(diagnostic);
+                }
             },
             Entity => match parse_entity_declaration(ctx) {
                 Ok(mut entity) => {

@@ -447,6 +447,24 @@ pub enum ErrorCode {
     /// Both signals `x` and `y` are specified in the process, but only x is read.
     SuperfluousInSensitivityList,
 
+    /// A `` `warning `` tool directive (LRM 24.2)
+    ///
+    /// # Example
+    /// ```vhdl
+    /// `warning "This design is not tested with VHDL-2019"
+    /// ```
+    WarningDirective,
+
+    /// An `` `error `` tool directive (LRM 24.2)
+    ///
+    /// # Example
+    /// ```vhdl
+    /// `if VHDL_VERSION < "2008" then
+    /// `error "VHDL-2008 or later is required"
+    /// `end if
+    /// ```
+    ErrorDirective,
+
     // Misc
     /// An internal error that signifies that some precondition within vhdl_lang wasn't met.
     /// If an error with this error code occurs,
@@ -529,12 +547,14 @@ impl Default for SeverityMap {
             | UnexpectedSignature
             | MissingDeferredDeclaration
             | MissingFullTypeDeclaration
-            | InvalidCall => Some(Error),
+            | InvalidCall
+            | ErrorDirective => Some(Error),
             Unused
             | UnnecessaryWorkLibrary
             | UnassociatedContext
             | MissingInSensitivityList
-            | SuperfluousInSensitivityList => Some(Warning),
+            | SuperfluousInSensitivityList
+            | WarningDirective => Some(Warning),
             Internal => Some(Error),
             Related => Some(Hint)
         };

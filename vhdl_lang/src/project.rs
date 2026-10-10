@@ -9,9 +9,11 @@ use crate::ast::search::Searcher;
 use crate::ast::DesignFile;
 use crate::completion::{list_completion_options, CompletionItem};
 use crate::config::Config;
+use crate::formatting::{format_source, FormatError};
 use crate::lint::dead_code::UnusedDeclarationsLinter;
 use crate::lint::sensitivity_list::SensitivityListLinter;
 use crate::named_entity::EntRef;
+use crate::signature_help::{signature_help, SignatureHelp};
 use crate::standard::VHDLStandard;
 use crate::syntax::VHDLParser;
 use crate::{data::*, EntHierarchy, EntityId};
@@ -198,6 +200,11 @@ impl Project {
             .map(|file| file.source.clone())
     }
 
+    /// Formats a source with the VHDL standard of the project.
+    pub fn format_source(&self, source: &Source) -> Result<String, FormatError> {
+        format_source(&self.parser, source)
+    }
+
     pub fn update_source(&mut self, source: &Source) {
         let mut source_file = {
             if let Some(mut source_file) = self.files.remove(source.file_path()) {
@@ -364,6 +371,14 @@ impl Project {
         cursor: Position,
     ) -> Vec<CompletionItem<'_>> {
         list_completion_options(&self.root, source, cursor)
+    }
+
+    pub fn signature_help<'a>(
+        &'a self,
+        source: &Source,
+        cursor: Position,
+    ) -> Option<SignatureHelp<'a>> {
+        signature_help(&self.root, source, cursor)
     }
 
     pub fn entity_id_from_raw(&self, raw: usize) -> Option<EntityId> {

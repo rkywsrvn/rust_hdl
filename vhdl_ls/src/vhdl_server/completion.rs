@@ -227,5 +227,6 @@ fn entity_kind_to_completion_kind(kind: &AnyEntKind) -> CompletionItemKind {
         AnyEntKind::Library => CompletionItemKind::MODULE,
         AnyEntKind::Design(_) => CompletionItemKind::MODULE,
         AnyEntKind::View(_) => CompletionItemKind::INTERFACE,
+        AnyEntKind::GroupTemplate(_) | AnyEntKind::Group => CompletionItemKind::REFERENCE,
     }
 }

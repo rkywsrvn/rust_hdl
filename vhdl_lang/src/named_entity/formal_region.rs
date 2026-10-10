@@ -43,7 +43,7 @@ impl<'a> InterfaceEnt<'a> {
             AnyEntKind::Design(Design::InterfacePackageInstance(..)) => {
                 Some(InterfaceEnt::Package(DesignEnt::from_any(ent).unwrap()))
             }
-            AnyEntKind::Type(Type::Interface) => {
+            AnyEntKind::Type(Type::Interface(_)) => {
                 Some(InterfaceEnt::Type(TypeEnt::from_any(ent).unwrap()))
             }
             AnyEntKind::Overloaded(Overloaded::InterfaceSubprogram(_)) => Some(
@@ -119,7 +119,7 @@ impl<'a> From<GpkgInterfaceEnt<'a>> for InterfaceEnt<'a> {
 impl<'a> GpkgInterfaceEnt<'a> {
     pub fn from_any(ent: EntRef<'a>) -> Option<Self> {
         match ent.actual_kind() {
-            AnyEntKind::Type(Type::Interface) => {
+            AnyEntKind::Type(Type::Interface(_)) => {
                 Some(GpkgInterfaceEnt::Type(TypeEnt::from_any(ent).unwrap()))
             }
             AnyEntKind::Object(obj) if obj.is_generic() => Some(GpkgInterfaceEnt::Constant(
