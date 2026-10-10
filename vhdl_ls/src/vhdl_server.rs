@@ -11,6 +11,7 @@ mod formatting;
 mod lifecycle;
 mod rename;
 pub(crate) mod semantic_tokens;
+mod signature_help;
 mod text_document;
 mod workspace;
 
@@ -1017,7 +1018,7 @@ lib.files = [
         });
     }
 
-    fn std_lib_config() -> String {
+    pub(crate) fn std_lib_config() -> String {
         format!(
             "[libraries]\nstd.files = ['{}/../vhdl_libraries/std/*.vhd']\nlib.files = ['*.vhd']\n",
             std::env::var("CARGO_MANIFEST_DIR").unwrap()
