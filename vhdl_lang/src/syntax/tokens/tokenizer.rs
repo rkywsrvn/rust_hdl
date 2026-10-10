@@ -1792,6 +1792,7 @@ pub struct Symbols {
     symtab: SymbolTable,
     keywords: Vec<Kind>,
     attributes: FnvHashMap<Symbol, AttributeDesignator>,
+    standard: VHDLStandard,
 }
 
 impl Symbols {
@@ -1832,7 +1833,12 @@ impl Symbols {
             symtab,
             keywords,
             attributes,
+            standard: version,
         }
+    }
+
+    pub fn standard(&self) -> VHDLStandard {
+        self.standard
     }
 }
 
@@ -2206,6 +2212,10 @@ impl<'a> Tokenizer<'a> {
     #[allow(dead_code)]
     pub fn get_final_comments(&self) -> Option<Vec<Comment>> {
         self.final_comments.clone()
+    }
+
+    pub fn standard(&self) -> VHDLStandard {
+        self.symbols.standard()
     }
 
     pub fn text_until_newline(&mut self) -> DiagnosticResult<Token> {

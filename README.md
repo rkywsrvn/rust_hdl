@@ -204,6 +204,20 @@ begin
 end architecture;
 ```
 
+## Conditional analysis
+
+VHDL-LS evaluates the conditional analysis directives `` `if ``, `` `elsif ``, `` `else `` and `` `end if ``.
+It reports `` `warning `` and `` `error `` directives as diagnostics. The identifiers have these values:
+
+| Identifier     | Value                                        |
+|----------------|----------------------------------------------|
+| `VHDL_VERSION` | The configured standard, for example `"2008"` |
+| `TOOL_TYPE`    | `"SIMULATION"`                               |
+| `TOOL_VENDOR`  | `"VHDL-LS"`                                  |
+| `TOOL_NAME`    | `"vhdl_ls"`                                  |
+| `TOOL_EDITION` | `""`                                         |
+| `TOOL_VERSION` | The version of VHDL-LS                       |
+
 ## As an LSP-client developer how should I integrate VHDL-LS?
 
 I recommend that the `lsp-client` polls GitHub and downloads
