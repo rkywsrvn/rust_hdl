@@ -1,0 +1,13 @@
+name = "VHDL"
+grammar = "vhdl"
+path_suffixes = ["vhd", "vhdl"]
+line_comments = ["-- "]
+block_comment = { start = "/* ", prefix = "", end = " */", tab_size = 0 }
+autoclose_before = ";:.,=)]"
+brackets = [
+  { start = "(", end = ")", close = true, newline = true },
+  { start = "[", end = "]", close = true, newline = true },
+  { start = "\"", end = "\"", close = true, newline = false, not_in = ["string", "comment"] },
+]
+increase_indent_pattern = '(?i)(\b(is|begin|then|else|loop|generate|record|units|protected|body|block)|=>|\()\s*(--.*)?$|^\s*(\w+\s*:\s*)?(postponed\s+)?process\b[^;]*$'
+decrease_indent_pattern = '(?i)^\s*`?(end|begin|else|elsif)\b'
