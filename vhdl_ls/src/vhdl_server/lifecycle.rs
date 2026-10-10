@@ -87,6 +87,7 @@ impl VHDLServer {
             document_symbol_provider: Some(OneOf::Left(true)),
             document_highlight_provider: Some(OneOf::Left(true)),
             document_formatting_provider: Some(OneOf::Left(true)),
+            folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
             semantic_tokens_provider: Some(
                 SemanticTokensServerCapabilities::SemanticTokensOptions(SemanticTokensOptions {
                     legend: SemanticTokensLegend {

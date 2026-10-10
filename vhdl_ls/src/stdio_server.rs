@@ -237,6 +237,7 @@ impl ConnectionRpcChannel {
                 server.resolve_completion_item(&params)
             })
             .on::<request::Formatting>(|server, params| server.document_formatting(&params))
+            .on::<request::FoldingRangeRequest>(|server, params| server.folding_range(&params))
             .on::<request::SemanticTokensFullRequest>(|server, params| {
                 server.semantic_tokens_full(&params)
             })

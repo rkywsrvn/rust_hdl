@@ -6,6 +6,7 @@
 
 mod completion;
 mod diagnostics;
+mod folding;
 mod formatting;
 mod lifecycle;
 mod rename;
