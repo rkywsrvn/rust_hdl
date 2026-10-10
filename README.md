@@ -183,8 +183,9 @@ unnecessary_work_library = false # Disable linting for the 'library work;' state
 ## Ignoring errors
 
 You can use the comment-pair `-- vhdl_ls off` and `-- vhdl_ls on` to conditionally disable and re-enable parsing of
-source code. This can be helpful to ignore errors from correct code that vhdl_ls does not yet support, i.e., PSL
-statements or certain VHDL-2019 constructs.
+source code. This can be helpful to ignore errors from correct code that vhdl_ls does not yet support.
+
+PSL directives, declarations and verification units are skipped. VHDL-LS does not analyze them.
 
 ```vhdl
 library ieee;

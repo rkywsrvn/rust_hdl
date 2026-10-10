@@ -23,6 +23,7 @@ mod interface_declaration;
 mod names;
 mod object_declaration;
 mod parser;
+mod psl;
 mod range;
 mod separated_list;
 mod sequential_statement;

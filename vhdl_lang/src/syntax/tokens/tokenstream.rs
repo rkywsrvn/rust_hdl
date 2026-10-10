@@ -177,6 +177,12 @@ impl<'a> TokenStream<'a> {
         self.nth_kind_is(0, kind)
     }
 
+    pub fn nth_kind(&self, idx: usize) -> Option<Kind> {
+        self.tokens
+            .get(self.get_idx() + idx)
+            .map(|token| token.kind)
+    }
+
     pub fn nth_kind_is(&self, idx: usize, kind: Kind) -> bool {
         if let Some(token) = self.tokens.get(self.get_idx() + idx) {
             token.kind == kind

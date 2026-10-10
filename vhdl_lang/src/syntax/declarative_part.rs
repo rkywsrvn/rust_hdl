@@ -14,6 +14,7 @@ use super::disconnection::parse_disconnection_specification;
 use super::group::parse_group_declaration;
 use super::names::parse_selected_name;
 use super::object_declaration::{parse_file_declaration, parse_object_declaration};
+use super::psl::{is_psl_item, skip_psl_item};
 use super::subprogram::parse_subprogram;
 use super::tokens::{Kind::*, *};
 use super::type_declaration::parse_type_declaration;
@@ -188,6 +189,8 @@ pub fn parse_declarative_part(
                     }
                 }
             }
+
+            Property | Sequence | Default if is_psl_item(ctx) => skip_psl_item(ctx)?,
 
             View => {
                 match parse_mode_view_declaration(ctx).or_recover_until(ctx, is_recover_token) {

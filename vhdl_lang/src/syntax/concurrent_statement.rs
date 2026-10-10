@@ -12,6 +12,7 @@ use super::expression::{parse_choices, parse_expression};
 use super::interface_declaration::{parse_generic_interface_list, parse_port_interface_list};
 use super::names::parse_name;
 use super::names::{expression_to_ident, parse_association_list, parse_selected_name};
+use super::psl::{is_psl_item, skip_psl_item};
 use super::range::parse_discrete_range;
 use super::sequential_statement::{
     parse_assert_statement, parse_labeled_sequential_statements, parse_selection,
@@ -703,20 +704,38 @@ pub fn parse_labeled_concurrent_statements(
             End | Elsif | Else | When => {
                 break Ok(statements);
             }
-            _ => match parse_labeled_concurrent_statement(ctx) {
-                Ok(stmt) => {
-                    statements.push(stmt);
+            _ if is_psl_item(ctx) => skip_psl_item(ctx)?,
+            _ => {
+                let start = ctx.stream.state();
+                match parse_labeled_concurrent_statement(ctx) {
+                    Ok(stmt) => {
+                        statements.push(stmt);
+                    }
+                    // An assertion that is not a VHDL assertion is a PSL assertion.
+                    Err(_) if is_assertion_at(ctx, start) => {
+                        ctx.stream.set_state(start);
+                        skip_psl_item(ctx)?;
+                    }
+                    Err(diagnostic) => {
+                        ctx.diagnostics.push(diagnostic);
+                        ctx.stream.skip_until(|kind| {
+                            matches!(kind, SemiColon | End | Process | Block | Assert)
+                        })?;
+                        ctx.stream.pop_if_kind(SemiColon);
+                    }
                 }
-                Err(diagnostic) => {
-                    ctx.diagnostics.push(diagnostic);
-                    ctx.stream.skip_until(|kind| {
-                        matches!(kind, SemiColon | End | Process | Block | Assert)
-                    })?;
-                    ctx.stream.pop_if_kind(SemiColon);
-                }
-            },
+            }
         }
     }
+}
+
+fn is_assertion_at(ctx: &ParsingContext<'_>, state: usize) -> bool {
+    let current = ctx.stream.state();
+    ctx.stream.set_state(state);
+    let is_assertion =
+        ctx.stream.next_kinds_are(&[Identifier, Colon, Assert]) || ctx.stream.next_kind_is(Assert);
+    ctx.stream.set_state(current);
+    is_assertion
 }
 
 pub fn parse_labeled_concurrent_statement(

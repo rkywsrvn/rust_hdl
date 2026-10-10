@@ -205,6 +205,13 @@ pub enum Kind {
     LeftSquare,
     #[strum(serialize = "]")]
     RightSquare,
+    // PSL
+    #[strum(serialize = "{")]
+    LeftCurly,
+    #[strum(serialize = "}")]
+    RightCurly,
+    #[strum(serialize = "!")]
+    Exclamation,
     #[strum(serialize = ";")]
     SemiColon,
     #[strum(serialize = ":")]
@@ -2110,6 +2117,18 @@ impl<'a> Tokenizer<'a> {
                 self.reader.skip();
                 (RightSquare, Value::None)
             }
+            b'{' => {
+                self.reader.skip();
+                (LeftCurly, Value::None)
+            }
+            b'}' => {
+                self.reader.skip();
+                (RightCurly, Value::None)
+            }
+            b'!' => {
+                self.reader.skip();
+                (Exclamation, Value::None)
+            }
             b'\\' => {
                 self.reader.skip();
                 // LRM 15.4.3 Extended identifers
@@ -3286,6 +3305,10 @@ my_other_ident",
     #[test]
     fn tokenize_squares() {
         assert_eq!(kinds_tokenize("[]"), vec![LeftSquare, RightSquare]);
+        assert_eq!(
+            kinds_tokenize("{}!"),
+            vec![LeftCurly, RightCurly, Exclamation]
+        );
     }
 
     #[test]
@@ -3416,7 +3439,7 @@ comment
 
     #[test]
     fn tokenize_illegal() {
-        let code = Code::new("begin!end");
+        let code = Code::new("begin$end");
         let (tokens, diagnostics, _) = code.tokenize_result();
         assert_eq!(
             tokens,
@@ -3437,7 +3460,7 @@ comment
         );
         assert_eq!(
             diagnostics,
-            vec![Diagnostic::syntax_error(code.s1("!"), "Illegal token")],
+            vec![Diagnostic::syntax_error(code.s1("$"), "Illegal token")],
         );
     }
 
