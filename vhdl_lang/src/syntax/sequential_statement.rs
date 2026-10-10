@@ -6,6 +6,7 @@
 
 use super::common::parse_optional;
 use super::common::ParseResult;
+use super::declarative_part::parse_declarative_part;
 use super::expression::parse_aggregate;
 use super::expression::{parse_choices, parse_expression};
 use super::names::parse_name;
@@ -20,6 +21,7 @@ use crate::syntax::kinds_error;
 use crate::syntax::recover::{expect_semicolon, expect_semicolon_or_last};
 use crate::syntax::separated_list::parse_name_list;
 use crate::HasTokenSpan;
+use crate::{TokenAccess, VHDLStandard};
 use vhdl_lang::syntax::parser::ParsingContext;
 use vhdl_lang::TokenSpan;
 
@@ -203,6 +205,37 @@ fn parse_case_statement(
 }
 
 /// LRM 10.10 Loop statement
+/// LRM 10.13 Sequential block statement
+fn parse_sequential_block_statement(
+    ctx: &mut ParsingContext<'_>,
+    label: Option<&Ident>,
+) -> ParseResult<SequentialBlockStatement> {
+    let block_token = ctx.stream.expect_kind(Block)?;
+    if ctx.standard < VHDLStandard::VHDL2019 {
+        ctx.diagnostics.push(Diagnostic::syntax_error(
+            ctx.get_pos(block_token),
+            "Sequential block statements require VHDL-2019",
+        ));
+    }
+    let is_token = ctx.stream.pop_if_kind(Is);
+    let decl = parse_declarative_part(ctx)?;
+    let begin_token = ctx.stream.expect_kind(Begin)?;
+    let statements = parse_labeled_sequential_statements(ctx)?;
+    let end_token = ctx.stream.expect_kind(End)?;
+    ctx.stream.expect_kind(Block)?;
+    let end_label_pos =
+        check_label_identifier_mismatch(ctx, label, ctx.stream.pop_optional_ident());
+    expect_semicolon(ctx);
+    Ok(SequentialBlockStatement {
+        is_token,
+        decl,
+        begin_token,
+        statements,
+        end_token,
+        end_label_pos,
+    })
+}
+
 fn parse_loop_statement(
     ctx: &mut ParsingContext<'_>,
     label: Option<&Ident>,
@@ -566,6 +599,7 @@ fn parse_unlabeled_sequential_statement(
             For | Loop | While => {
                 SequentialStatement::Loop(parse_loop_statement(ctx, label)?)
             },
+            Block => SequentialStatement::Block(parse_sequential_block_statement(ctx, label)?),
             Next => SequentialStatement::Next(parse_next_statement(ctx)?),
             Exit => SequentialStatement::Exit(parse_exit_statement(ctx)?),
             Return => SequentialStatement::Return(parse_return_statement(ctx)?),
@@ -1698,6 +1732,55 @@ end case?;",
                     code.token_span()
                 )
             )
+        );
+    }
+
+    #[test]
+    fn parse_sequential_block_statement() {
+        let code = Code::with_standard(
+            "\
+lbl: block is
+  variable v : natural;
+begin
+  stmt1;
+end block lbl;",
+            VHDLStandard::VHDL2019,
+        );
+        let statement = parse_stmt(&code);
+        assert_eq!(
+            statement,
+            with_label(
+                Some(code.s1("lbl").ident()),
+                WithTokenSpan::new(
+                    SequentialStatement::Block(SequentialBlockStatement {
+                        is_token: Some(code.s1("is").token()),
+                        decl: code.s1("variable v : natural;").declarative_part(),
+                        begin_token: code.s1("begin").token(),
+                        statements: vec![code.s1("stmt1;").sequential_statement()],
+                        end_token: code.s1("end").token(),
+                        end_label_pos: Some(code.s("lbl", 2).pos()),
+                    }),
+                    code.pos_after("lbl: ").token_span()
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn sequential_block_statement_requires_vhdl2019() {
+        let code = Code::new(
+            "\
+block
+begin
+end block;",
+        );
+        let (_, diagnostics) = code.with_partial_stream_diagnostics(parse_sequential_statement);
+        assert_eq!(
+            diagnostics,
+            vec![Diagnostic::syntax_error(
+                code.s1("block"),
+                "Sequential block statements require VHDL-2019"
+            )]
         );
     }
 

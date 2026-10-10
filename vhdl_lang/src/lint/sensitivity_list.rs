@@ -549,7 +549,7 @@ impl Searcher for SensitivityListChecker<'_> {
                         }
                     }
                 }
-                Wait(_) | Null | SignalReleaseAssignment(_) => {}
+                Wait(_) | Null | SignalReleaseAssignment(_) | Block(_) => {}
             }
         }
         SearchState::NotFinished

@@ -26,6 +26,7 @@ mod resolves_design_units;
 mod resolves_names;
 mod resolves_type_mark;
 mod sensitivity_list;
+mod sequential_block;
 mod subprogram_arguments;
 mod subprogram_instance;
 mod tool_directive;

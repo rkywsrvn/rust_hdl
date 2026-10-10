@@ -877,6 +877,7 @@ pub enum Sequential {
     Loop,
     If,
     Case,
+    Block,
 }
 
 impl Sequential {
@@ -885,6 +886,7 @@ impl Sequential {
             Sequential::Case => "case statement",
             Sequential::If => "if statement",
             Sequential::Loop => "loop statement",
+            Sequential::Block => "block statement",
         }
     }
 }

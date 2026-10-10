@@ -101,6 +101,7 @@ impl Declaration {
                 | Overloaded::UninstSubprogram(..),
             )
             | AnyEntKind::Concurrent(Some(Concurrent::Process), _)
+            | AnyEntKind::Sequential(Some(Sequential::Block))
             | AnyEntKind::Type(named_entity::Type::Protected(..)) => matches!(
                 self,
                 Object(ObjectDeclaration {

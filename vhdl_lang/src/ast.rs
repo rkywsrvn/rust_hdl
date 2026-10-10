@@ -1117,6 +1117,17 @@ pub struct LoopStatement {
     pub end_label_pos: Option<SrcPos>,
 }
 
+/// LRM 10.13 Sequential block statement (VHDL-2019)
+#[derive(PartialEq, Debug, Clone)]
+pub struct SequentialBlockStatement {
+    pub is_token: Option<TokenId>,
+    pub decl: Vec<WithTokenSpan<Declaration>>,
+    pub begin_token: TokenId,
+    pub statements: Vec<LabeledSequentialStatement>,
+    pub end_token: TokenId,
+    pub end_label_pos: Option<SrcPos>,
+}
+
 /// LRM 10.11 Next statement
 #[derive(PartialEq, Debug, Clone)]
 pub struct NextStatement {
@@ -1151,6 +1162,7 @@ pub enum SequentialStatement {
     If(IfStatement),
     Case(CaseStatement),
     Loop(LoopStatement),
+    Block(SequentialBlockStatement),
     Next(NextStatement),
     Exit(ExitStatement),
     Return(ReturnStatement),

@@ -388,6 +388,10 @@ impl Search for LabeledSequentialStatement {
             SequentialStatement::Case(ref case_stmt) => {
                 return_if_found!(case_stmt.search(ctx, searcher));
             }
+            SequentialStatement::Block(ref block) => {
+                return_if_found!(block.decl.search(ctx, searcher));
+                return_if_found!(block.statements.search(ctx, searcher));
+            }
             SequentialStatement::Loop(ref loop_stmt) => {
                 let LoopStatement {
                     iteration_scheme,
