@@ -1,0 +1,11 @@
+id = "vhdl-ls"
+name = "VHDL LS"
+description = "VHDL support with the VHDL-LS language server"
+version = "0.1.0"
+schema_version = 1
+authors = ["rkywsrvn"]
+repository = "https://github.com/VHDL-LS/rust_hdl"
+
+[grammars.vhdl]
+repository = "https://github.com/jpt13653903/tree-sitter-vhdl"
+rev = "9be8e45c3ae7e7a4373a943a5c81ff92ce3656f8"
