@@ -13,6 +13,7 @@ use crate::formatting::{format_source, FormatError};
 use crate::lint::dead_code::UnusedDeclarationsLinter;
 use crate::lint::sensitivity_list::SensitivityListLinter;
 use crate::named_entity::EntRef;
+use crate::signature_help::{signature_help, SignatureHelp};
 use crate::standard::VHDLStandard;
 use crate::syntax::VHDLParser;
 use crate::{data::*, EntHierarchy, EntityId};
@@ -370,6 +371,14 @@ impl Project {
         cursor: Position,
     ) -> Vec<CompletionItem<'_>> {
         list_completion_options(&self.root, source, cursor)
+    }
+
+    pub fn signature_help<'a>(
+        &'a self,
+        source: &Source,
+        cursor: Position,
+    ) -> Option<SignatureHelp<'a>> {
+        signature_help(&self.root, source, cursor)
     }
 
     pub fn entity_id_from_raw(&self, raw: usize) -> Option<EntityId> {
