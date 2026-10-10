@@ -65,6 +65,8 @@ impl Declaration {
                         | Package(_)
                         | Configuration(_)
                         | Disconnection(_)
+                        | GroupTemplate(_)
+                        | Group(_)
                         | View(_)
                 )
             }
@@ -86,6 +88,8 @@ impl Declaration {
                     | Use(_)
                     | Package(_)
                     | Disconnection(_)
+                    | GroupTemplate(_)
+                    | Group(_)
                     | View(_)
             ),
             // LRM: package_body_declarative_item
@@ -111,6 +115,8 @@ impl Declaration {
                     | SubprogramBody(_)
                     | Use(_)
                     | Package(_)
+                    | GroupTemplate(_)
+                    | Group(_)
             ),
             // LRM: package_declarative_item
             AnyEntKind::Design(Design::Package(..)) => matches!(
@@ -126,6 +132,8 @@ impl Declaration {
                     | Use(_)
                     | Package(_)
                     | Disconnection(_)
+                    | GroupTemplate(_)
+                    | Group(_)
                     | View(_)
             ),
             _ => {
@@ -615,6 +623,27 @@ impl<'a> AnalyzeContext<'a, '_> {
             Declaration::Disconnection(spec) => {
                 self.analyze_disconnection_specification(scope, spec, diagnostics)?
             }
+            Declaration::GroupTemplate(template) => {
+                if let Some(entry) = template.entries.iter().rev().skip(1).find(|e| e.is_open) {
+                    diagnostics.add(
+                        decl.span.pos(self.ctx),
+                        format!("Only the last entry may have '<>', not {}", entry.class),
+                        ErrorCode::SyntaxError,
+                    );
+                }
+                let ent = self.define(
+                    &mut template.ident,
+                    parent,
+                    AnyEntKind::GroupTemplate(template.entries.clone()),
+                    src_span,
+                );
+                scope.add(ent, diagnostics);
+            }
+            Declaration::Group(group) => {
+                self.analyze_group_constituents(scope, group, diagnostics)?;
+                let ent = self.define(&mut group.ident, parent, AnyEntKind::Group, src_span);
+                scope.add(ent, diagnostics);
+            }
             Declaration::View(view) => {
                 if let Some(view) = as_fatal(self.analyze_view_declaration(
                     scope,
@@ -629,6 +658,90 @@ impl<'a> AnalyzeContext<'a, '_> {
             Declaration::Type(..) => unreachable!("Handled elsewhere"),
         };
 
+        Ok(())
+    }
+
+    /// LRM 6.10: Each constituent must belong to the entity class of its template entry.
+    fn analyze_group_constituents(
+        &self,
+        scope: &Scope<'a>,
+        group: &mut GroupDeclaration,
+        diagnostics: &mut dyn DiagnosticHandler,
+    ) -> FatalResult {
+        let Some(template) = as_fatal(self.name_resolve(
+            scope,
+            group.template.span,
+            &mut group.template.item,
+            diagnostics,
+        ))?
+        else {
+            return Ok(());
+        };
+        let entries = match template {
+            ResolvedName::Final(ent) => match ent.kind() {
+                AnyEntKind::GroupTemplate(entries) => entries.clone(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        };
+        if entries.is_empty() {
+            diagnostics.add(
+                group.template.span.pos(self.ctx),
+                format!("{} is not a group template", template.describe()),
+                ErrorCode::MismatchedKinds,
+            );
+            return Ok(());
+        }
+        let is_open = entries.last().is_some_and(|entry| entry.is_open);
+        let count_matches = if is_open {
+            group.constituents.len() + 1 >= entries.len()
+        } else {
+            group.constituents.len() == entries.len()
+        };
+        if !count_matches {
+            diagnostics.add(
+                group.template.span.pos(self.ctx),
+                format!(
+                    "Group template has {} entries, but the group has {} constituents",
+                    entries.len(),
+                    group.constituents.len()
+                ),
+                ErrorCode::Unassociated,
+            );
+        }
+        for (i, constituent) in group.constituents.iter_mut().enumerate() {
+            let Name::Designator(designator) = &mut constituent.item else {
+                as_fatal(self.name_resolve(
+                    scope,
+                    constituent.span,
+                    &mut constituent.item,
+                    diagnostics,
+                ))?;
+                continue;
+            };
+            let ent = match scope.lookup(&designator.item) {
+                Ok(NamedEntities::Single(ent)) => ent,
+                Ok(NamedEntities::Overloaded(overloaded)) => match overloaded.as_unique() {
+                    Some(ent) => ent,
+                    None => continue,
+                },
+                Err(err) => {
+                    diagnostics.push(err.into_diagnostic(self.ctx, constituent.span));
+                    continue;
+                }
+            };
+            designator.set_unique_reference(ent);
+            let Some(entry) = entries.get(i).or(entries.last().filter(|_| is_open)) else {
+                continue;
+            };
+            if get_entity_class(ent.as_actual()) != Some(entry.class) {
+                diagnostics.add(
+                    constituent.span.pos(self.ctx),
+                    format!("{} is not of class {}", ent.describe(), entry.class),
+                    ErrorCode::MismatchedEntityClass,
+                );
+            }
+        }
         Ok(())
     }
 
@@ -980,6 +1093,7 @@ impl<'a> AnalyzeContext<'a, '_> {
                 | EntityClass::Literal
                 | EntityClass::Units
                 | EntityClass::File
+                | EntityClass::Group
                 | EntityClass::Label => {
                     if ent.parent != Some(parent) {
                         diagnostics.add(
@@ -1408,6 +1522,8 @@ fn get_entity_class(ent: EntRef<'_>) -> Option<EntityClass> {
             Design::Context(_) => None,
         },
         AnyEntKind::View(_) => None,
+        AnyEntKind::GroupTemplate(_) => None,
+        AnyEntKind::Group => Some(EntityClass::Group),
     }
 }
 

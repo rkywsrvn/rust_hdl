@@ -146,6 +146,10 @@ fn classify(ent: EntRef<'_>) -> Option<TokenClassification> {
             token_type: TYPE,
             modifiers: 0,
         },
+        AnyEntKind::GroupTemplate(_) | AnyEntKind::Group => TokenClassification {
+            token_type: NAMESPACE,
+            modifiers: 0,
+        },
         AnyEntKind::File(_) | AnyEntKind::InterfaceFile(_) => TokenClassification {
             token_type: VARIABLE,
             modifiers: 0,

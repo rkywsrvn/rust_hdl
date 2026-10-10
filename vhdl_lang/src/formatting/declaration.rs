@@ -7,8 +7,9 @@
 
 use crate::ast::{
     ArrayIndex, ComponentDeclaration, ContextReference, DisconnectionSpecification,
-    ElementDeclaration, EntityName, FileDeclaration, GuardedSignalList, ModeViewDeclaration,
-    ObjectDeclaration, PackageInstantiation, SubtypeIndication, TypeDeclaration, TypeDefinition,
+    ElementDeclaration, EntityName, FileDeclaration, GroupDeclaration, GuardedSignalList,
+    ModeViewDeclaration, ObjectDeclaration, PackageInstantiation, SubtypeIndication,
+    TypeDeclaration, TypeDefinition,
 };
 use crate::formatting::buffer::Buffer;
 use crate::formatting::VHDLFormatter;
@@ -71,8 +72,60 @@ impl VHDLFormatter<'_> {
             Disconnection(spec) => {
                 self.format_disconnection_specification(spec, declaration.span, buffer)
             }
+            GroupTemplate(_) => self.format_group_template(declaration.span, buffer),
+            Group(group) => self.format_group(group, declaration.span, buffer),
             View(view_declaration) => self.format_view(view_declaration, declaration.span, buffer),
         }
+    }
+
+    pub fn format_group_template(&self, span: TokenSpan, buffer: &mut Buffer) {
+        // group <ident> is
+        self.format_token_span(
+            TokenSpan::new(span.start_token, span.start_token + 2),
+            buffer,
+        );
+        buffer.push_whitespace();
+        // (
+        self.format_token_id(span.start_token + 3, buffer);
+        for id in TokenSpan::new(span.start_token + 4, span.end_token - 2).iter() {
+            match self.tokens.index(id).kind {
+                Kind::Comma => {
+                    self.format_token_id(id, buffer);
+                    buffer.push_whitespace();
+                }
+                Kind::BOX => {
+                    buffer.push_whitespace();
+                    self.format_token_id(id, buffer);
+                }
+                _ => self.format_token_id(id, buffer),
+            }
+        }
+        // );
+        self.join_token_span(TokenSpan::new(span.end_token - 1, span.end_token), buffer);
+    }
+
+    pub fn format_group(&self, group: &GroupDeclaration, span: TokenSpan, buffer: &mut Buffer) {
+        // group
+        self.format_token_id(span.start_token, buffer);
+        buffer.push_whitespace();
+        self.format_ident(&group.ident, buffer);
+        // :
+        self.format_token_id(group.ident.tree.token + 1, buffer);
+        buffer.push_whitespace();
+        self.format_name(group.template.as_ref(), buffer);
+        buffer.push_whitespace();
+        // (
+        self.format_token_id(group.template.span.end_token + 1, buffer);
+        for (i, constituent) in group.constituents.iter().enumerate() {
+            self.format_name(constituent.as_ref(), buffer);
+            if i + 1 < group.constituents.len() {
+                // ,
+                self.format_token_id(constituent.span.end_token + 1, buffer);
+                buffer.push_whitespace();
+            }
+        }
+        // );
+        self.join_token_span(TokenSpan::new(span.end_token - 1, span.end_token), buffer);
     }
 
     pub fn format_disconnection_specification(
@@ -758,6 +811,12 @@ end protected;",
     attribute foreign of fun: function is \"fun\";
 end protected;",
         );
+    }
+
+    #[test]
+    fn group_declarations() {
+        check_declaration("group pins is (signal, signal <>);");
+        check_declaration("group control: pins (clk, rst);");
     }
 
     #[test]

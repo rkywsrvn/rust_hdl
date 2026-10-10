@@ -495,6 +495,7 @@ fn to_symbol_kind(kind: &AnyEntKind) -> SymbolKind {
         AnyEntKind::Concurrent(..) => SymbolKind::NAMESPACE,
         AnyEntKind::Library => SymbolKind::NAMESPACE,
         AnyEntKind::View(_) => SymbolKind::INTERFACE,
+        AnyEntKind::GroupTemplate(_) | AnyEntKind::Group => SymbolKind::NAMESPACE,
         AnyEntKind::Design(d) => match d {
             vhdl_lang::Design::Entity(_, _) => SymbolKind::MODULE,
             vhdl_lang::Design::Architecture(..) => SymbolKind::MODULE,

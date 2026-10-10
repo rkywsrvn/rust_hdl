@@ -557,7 +557,7 @@ pub enum EntityClass {
     Label,
     Literal,
     Units,
-    // Group
+    Group,
     File,
     // Property
     // Sequence
@@ -910,12 +910,18 @@ pub enum Declaration {
     Package(PackageInstantiation),
     Configuration(ConfigurationSpecification),
     Disconnection(DisconnectionSpecification),
+    GroupTemplate(GroupTemplateDeclaration),
+    Group(GroupDeclaration),
     View(ModeViewDeclaration),
 }
 
 impl Declaration {
     pub fn declarations(&self) -> Vec<EntityId> {
         match self {
+            Declaration::GroupTemplate(GroupTemplateDeclaration { ident, .. })
+            | Declaration::Group(GroupDeclaration { ident, .. }) => {
+                ident.decl.get().into_iter().collect()
+            }
             Declaration::Object(ObjectDeclaration { idents, .. })
             | Declaration::File(FileDeclaration { idents, .. }) => {
                 idents.iter().flat_map(|ident| ident.decl.get()).collect()
@@ -1466,6 +1472,28 @@ pub struct BindingIndication {
     pub entity_aspect: Option<EntityAspect>,
     pub generic_map: Option<MapAspect>,
     pub port_map: Option<MapAspect>,
+}
+
+/// LRM 6.9 Group template declarations
+#[derive(PartialEq, Debug, Clone)]
+pub struct GroupTemplateDeclaration {
+    pub ident: WithDecl<Ident>,
+    pub entries: Vec<GroupTemplateEntry>,
+}
+
+#[derive(PartialEq, Debug, Clone, Copy)]
+pub struct GroupTemplateEntry {
+    pub class: EntityClass,
+    /// True if the entry ends with `<>`.
+    pub is_open: bool,
+}
+
+/// LRM 6.10 Group declarations
+#[derive(PartialEq, Debug, Clone)]
+pub struct GroupDeclaration {
+    pub ident: WithDecl<Ident>,
+    pub template: WithTokenSpan<Name>,
+    pub constituents: Vec<WithTokenSpan<Name>>,
 }
 
 /// LRM 7.4 Disconnection specification

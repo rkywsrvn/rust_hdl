@@ -188,6 +188,7 @@ impl Display for EntityClass {
             EntityClass::Label => write!(f, "label"),
             EntityClass::Literal => write!(f, "literal"),
             EntityClass::Units => write!(f, "units"),
+            EntityClass::Group => write!(f, "group"),
             EntityClass::File => write!(f, "file"),
         }
     }

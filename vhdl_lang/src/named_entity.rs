@@ -7,9 +7,10 @@
 use crate::ast::ExternalObjectClass;
 use crate::ast::{
     AliasDeclaration, AnyDesignUnit, AnyPrimaryUnit, AnySecondaryUnit, Attribute,
-    AttributeDeclaration, AttributeSpecification, ComponentDeclaration, Designator, HasIdent,
-    Ident, InterfacePackageDeclaration, ModeViewDeclaration, ObjectClass, PackageInstantiation,
-    SubprogramBody, SubprogramInstantiation, SubprogramSpecification, TypeDeclaration, WithDecl,
+    AttributeDeclaration, AttributeSpecification, ComponentDeclaration, Designator,
+    GroupTemplateEntry, HasIdent, Ident, InterfacePackageDeclaration, ModeViewDeclaration,
+    ObjectClass, PackageInstantiation, SubprogramBody, SubprogramInstantiation,
+    SubprogramSpecification, TypeDeclaration, WithDecl,
 };
 use crate::data::*;
 mod types;
@@ -129,6 +130,10 @@ pub enum AnyEntKind<'a> {
     /// A VHDL 2019 View.
     /// The [Subtype] data is the type of the associated record.
     View(View<'a>),
+    /// LRM 6.9 Group template
+    GroupTemplate(Vec<GroupTemplateEntry>),
+    /// LRM 6.10 Group
+    Group,
 }
 
 impl<'a> AnyEntKind<'a> {
@@ -205,6 +210,8 @@ impl<'a> AnyEntKind<'a> {
             Design(design) => design.describe(),
             Type(typ) => typ.describe(),
             View(..) => "view",
+            GroupTemplate(..) => "group template",
+            Group => "group",
         }
     }
 }

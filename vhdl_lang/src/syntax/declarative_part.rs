@@ -11,6 +11,7 @@ use super::component_declaration::parse_component_declaration;
 use super::configuration::parse_configuration_specification;
 use super::context::parse_use_clause;
 use super::disconnection::parse_disconnection_specification;
+use super::group::parse_group_declaration;
 use super::names::parse_selected_name;
 use super::object_declaration::{parse_file_declaration, parse_object_declaration};
 use super::subprogram::parse_subprogram;
@@ -64,6 +65,7 @@ pub fn is_declarative_part(ctx: &mut ParsingContext<'_>) -> ParseResult<bool> {
             | For
             | View
             | Disconnect
+            | Group
             | Begin
     ))
 }
@@ -94,6 +96,7 @@ pub fn parse_declarative_part(
                 | Use
                 | Alias
                 | Disconnect
+                | Group
                 | Begin
                 | End
         )
@@ -173,6 +176,19 @@ pub fn parse_declarative_part(
                 }
             }
 
+            Group => {
+                let start_token = ctx.stream.get_current_token_id();
+                match parse_group_declaration(ctx).or_recover_until(ctx, is_recover_token) {
+                    Ok(decl) => declarations.push(WithTokenSpan::new(
+                        decl,
+                        TokenSpan::new(start_token, ctx.stream.get_last_token_id()),
+                    )),
+                    Err(err) => {
+                        ctx.diagnostics.push(err);
+                    }
+                }
+            }
+
             View => {
                 match parse_mode_view_declaration(ctx).or_recover_until(ctx, is_recover_token) {
                     Ok(decl) => declarations.push(decl.map_into(Declaration::View)),
@@ -188,12 +204,12 @@ pub fn parse_declarative_part(
                     VHDL2008 | VHDL1993 => &[
                         Type, Subtype, Component, Impure, Pure, Function, Procedure, Package, For,
                         File, Shared, Constant, Signal, Variable, Attribute, Use, Alias,
-                        Disconnect,
+                        Disconnect, Group,
                     ],
                     VHDL2019 => &[
                         Type, Subtype, Component, Impure, Pure, Function, Procedure, Package, For,
                         File, Shared, Constant, Signal, Variable, Attribute, Use, Alias,
-                        Disconnect, View,
+                        Disconnect, Group, View,
                     ],
                 };
                 ctx.diagnostics.push(token.kinds_error(expected));
@@ -289,7 +305,7 @@ constant x: natural := 5;
                 "Expected 'type', 'subtype', 'component', 'impure', 'pure', \
                  'function', 'procedure', 'package', 'for', 'file', \
                  'shared', 'constant', 'signal', 'variable', 'attribute', \
-                 'use', 'alias' or 'disconnect'"
+                 'use', 'alias', 'disconnect' or 'group'"
             )]
         );
     }
@@ -317,7 +333,7 @@ var not_a_var: broken;
                 "Expected 'type', 'subtype', 'component', 'impure', 'pure', \
                  'function', 'procedure', 'package', 'for', 'file', \
                  'shared', 'constant', 'signal', 'variable', 'attribute', \
-                 'use', 'alias' or 'disconnect'",
+                 'use', 'alias', 'disconnect' or 'group'",
             )],
         );
 
@@ -335,7 +351,7 @@ var not_a_var: broken;
                 "Expected 'type', 'subtype', 'component', 'impure', 'pure', \
                  'function', 'procedure', 'package', 'for', 'file', \
                  'shared', 'constant', 'signal', 'variable', 'attribute', \
-                 'use', 'alias', 'disconnect' or 'view'",
+                 'use', 'alias', 'disconnect', 'group' or 'view'",
             )],
         )
     }

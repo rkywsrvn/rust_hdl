@@ -268,6 +268,8 @@ impl<'a> AnalyzeContext<'a, '_> {
                     ));
                 }
             },
+            AnyEntKind::GroupTemplate(entries) => AnyEntKind::GroupTemplate(entries.clone()),
+            AnyEntKind::Group => AnyEntKind::Group,
             AnyEntKind::View(view) => AnyEntKind::View(View {
                 subtype: self.map_subtype(mapping, view.subtype, scope),
                 elements: view.elements.clone(),

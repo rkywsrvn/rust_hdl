@@ -68,6 +68,8 @@ pub enum DeclarationItem<'a> {
     GenerateBody(&'a WithDecl<Ident>),
     ConcurrentStatement(&'a LabeledConcurrentStatement),
     SequentialStatement(&'a LabeledSequentialStatement),
+    GroupTemplate(&'a GroupTemplateDeclaration),
+    Group(&'a GroupDeclaration),
     View(&'a ModeViewDeclaration),
 }
 
@@ -1274,6 +1276,27 @@ impl Search for Declaration {
             Declaration::Configuration(_) => {
                 // @TODO
             }
+            Declaration::GroupTemplate(template) => {
+                return_if_found!(searcher
+                    .search_decl(
+                        ctx,
+                        FoundDeclaration::new(
+                            &template.ident.decl,
+                            DeclarationItem::GroupTemplate(template)
+                        )
+                    )
+                    .or_not_found());
+            }
+            Declaration::Group(group) => {
+                return_if_found!(searcher
+                    .search_decl(
+                        ctx,
+                        FoundDeclaration::new(&group.ident.decl, DeclarationItem::Group(group))
+                    )
+                    .or_not_found());
+                return_if_found!(group.template.search(ctx, searcher));
+                return_if_found!(group.constituents.search(ctx, searcher));
+            }
             Declaration::Disconnection(spec) => {
                 if let GuardedSignalList::Names(names) = &spec.signals {
                     return_if_found!(names.search(ctx, searcher));
@@ -1935,6 +1958,7 @@ impl FoundDeclaration<'_> {
             DeclarationItem::SequentialStatement(..) => None,
             DeclarationItem::SubprogramInstantiation(_) => None,
             DeclarationItem::View(view) => view.end_ident_pos,
+            DeclarationItem::GroupTemplate(_) | DeclarationItem::Group(_) => None,
         }
     }
 
@@ -2064,6 +2088,34 @@ impl std::fmt::Display for DeclarationItem<'_> {
                 }
             }
             DeclarationItem::View(value) => write!(f, "view {} of {}", value.ident, value.typ),
+            DeclarationItem::GroupTemplate(value) => {
+                let entries = value
+                    .entries
+                    .iter()
+                    .map(|entry| {
+                        if entry.is_open {
+                            format!("{} <>", entry.class)
+                        } else {
+                            entry.class.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(f, "group {} is ({entries})", value.ident)
+            }
+            DeclarationItem::Group(value) => {
+                let constituents = value
+                    .constituents
+                    .iter()
+                    .map(|name| name.item.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                write!(
+                    f,
+                    "group {} : {} ({constituents})",
+                    value.ident, value.template.item
+                )
+            }
         }
     }
 }
