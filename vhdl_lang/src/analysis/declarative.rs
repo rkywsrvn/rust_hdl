@@ -64,6 +64,7 @@ impl Declaration {
                         | Use(_)
                         | Package(_)
                         | Configuration(_)
+                        | Disconnection(_)
                         | View(_)
                 )
             }
@@ -84,6 +85,7 @@ impl Declaration {
                     | SubprogramBody(_)
                     | Use(_)
                     | Package(_)
+                    | Disconnection(_)
                     | View(_)
             ),
             // LRM: package_body_declarative_item
@@ -123,6 +125,7 @@ impl Declaration {
                     | SubprogramInstantiation(_)
                     | Use(_)
                     | Package(_)
+                    | Disconnection(_)
                     | View(_)
             ),
             _ => {
@@ -609,6 +612,9 @@ impl<'a> AnalyzeContext<'a, '_> {
                 }
             }
             Declaration::Configuration(..) => {}
+            Declaration::Disconnection(spec) => {
+                self.analyze_disconnection_specification(scope, spec, diagnostics)?
+            }
             Declaration::View(view) => {
                 if let Some(view) = as_fatal(self.analyze_view_declaration(
                     scope,
@@ -624,6 +630,52 @@ impl<'a> AnalyzeContext<'a, '_> {
         };
 
         Ok(())
+    }
+
+    /// LRM 7.4: The signals must be signals of the given type.
+    fn analyze_disconnection_specification(
+        &self,
+        scope: &Scope<'a>,
+        spec: &mut DisconnectionSpecification,
+        diagnostics: &mut dyn DiagnosticHandler,
+    ) -> FatalResult {
+        let typ = as_fatal(self.type_name(
+            scope,
+            spec.type_mark.span,
+            &mut spec.type_mark.item,
+            diagnostics,
+        ))?;
+        if let GuardedSignalList::Names(names) = &mut spec.signals {
+            for name in names.iter_mut() {
+                let Some(object) = as_fatal(self.resolve_object_name(
+                    scope,
+                    name.span,
+                    &mut name.item,
+                    "is not a signal",
+                    ErrorCode::MismatchedKinds,
+                    diagnostics,
+                ))?
+                else {
+                    continue;
+                };
+                if object.base.class() != ObjectClass::Signal {
+                    diagnostics.add(
+                        name.span.pos(self.ctx),
+                        format!("{} is not a signal", object.base.describe()),
+                        ErrorCode::MismatchedKinds,
+                    );
+                } else if let Some(typ) = typ {
+                    if object.type_mark().base() != typ.base() {
+                        diagnostics.push(Diagnostic::type_mismatch(
+                            &name.span.pos(self.ctx),
+                            &object.describe_type(),
+                            typ,
+                        ));
+                    }
+                }
+            }
+        }
+        self.expr_with_ttyp(scope, self.time(), &mut spec.time, diagnostics)
     }
 
     /// Analyzes a mode view declaration.

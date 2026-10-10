@@ -11,6 +11,7 @@ mod context_clause;
 mod custom_attributes;
 mod declarations;
 mod deferred_constant;
+mod disconnection;
 mod discrete_ranges;
 mod external_names;
 mod hierarchy;

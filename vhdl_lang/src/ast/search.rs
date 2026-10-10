@@ -1274,6 +1274,13 @@ impl Search for Declaration {
             Declaration::Configuration(_) => {
                 // @TODO
             }
+            Declaration::Disconnection(spec) => {
+                if let GuardedSignalList::Names(names) = &spec.signals {
+                    return_if_found!(names.search(ctx, searcher));
+                }
+                return_if_found!(spec.type_mark.search(ctx, searcher));
+                return_if_found!(spec.time.search(ctx, searcher));
+            }
             Declaration::View(view) => {
                 return_if_found!(searcher
                     .search_decl(

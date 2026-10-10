@@ -1990,6 +1990,7 @@ impl Declaration {
             Declaration::Use(_) => "use",
             Declaration::Package(_) => "package instantiation",
             Declaration::Configuration(_) => "configuration",
+            Declaration::Disconnection(_) => "disconnection specification",
             Declaration::View(_) => "view",
         }
     }

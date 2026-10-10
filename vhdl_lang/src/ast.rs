@@ -909,6 +909,7 @@ pub enum Declaration {
     Use(UseClause),
     Package(PackageInstantiation),
     Configuration(ConfigurationSpecification),
+    Disconnection(DisconnectionSpecification),
     View(ModeViewDeclaration),
 }
 
@@ -1465,6 +1466,21 @@ pub struct BindingIndication {
     pub entity_aspect: Option<EntityAspect>,
     pub generic_map: Option<MapAspect>,
     pub port_map: Option<MapAspect>,
+}
+
+/// LRM 7.4 Disconnection specification
+#[derive(PartialEq, Debug, Clone)]
+pub struct DisconnectionSpecification {
+    pub signals: GuardedSignalList,
+    pub type_mark: WithTokenSpan<Name>,
+    pub time: WithTokenSpan<Expression>,
+}
+
+#[derive(PartialEq, Debug, Clone)]
+pub enum GuardedSignalList {
+    Names(Vec<WithTokenSpan<Name>>),
+    Others,
+    All,
 }
 
 /// LRM 7.3 Configuration specification

@@ -6,9 +6,9 @@
 // Copyright (c) 2024, Olof Kraigher olof.kraigher@gmail.com
 
 use crate::ast::{
-    ArrayIndex, ComponentDeclaration, ContextReference, ElementDeclaration, EntityName,
-    FileDeclaration, ModeViewDeclaration, ObjectDeclaration, PackageInstantiation,
-    SubtypeIndication, TypeDeclaration, TypeDefinition,
+    ArrayIndex, ComponentDeclaration, ContextReference, DisconnectionSpecification,
+    ElementDeclaration, EntityName, FileDeclaration, GuardedSignalList, ModeViewDeclaration,
+    ObjectDeclaration, PackageInstantiation, SubtypeIndication, TypeDeclaration, TypeDefinition,
 };
 use crate::formatting::buffer::Buffer;
 use crate::formatting::VHDLFormatter;
@@ -68,8 +68,49 @@ impl VHDLFormatter<'_> {
             Configuration(configuration) => {
                 self.format_configuration_specification(configuration, buffer)
             }
+            Disconnection(spec) => {
+                self.format_disconnection_specification(spec, declaration.span, buffer)
+            }
             View(view_declaration) => self.format_view(view_declaration, declaration.span, buffer),
         }
+    }
+
+    pub fn format_disconnection_specification(
+        &self,
+        spec: &DisconnectionSpecification,
+        span: TokenSpan,
+        buffer: &mut Buffer,
+    ) {
+        // disconnect
+        self.format_token_id(span.start_token, buffer);
+        buffer.push_whitespace();
+        match &spec.signals {
+            GuardedSignalList::Names(names) => {
+                for (i, name) in names.iter().enumerate() {
+                    self.format_name(name.as_ref(), buffer);
+                    if i + 1 < names.len() {
+                        // ,
+                        self.format_token_id(name.span.end_token + 1, buffer);
+                        buffer.push_whitespace();
+                    }
+                }
+            }
+            // others | all
+            GuardedSignalList::Others | GuardedSignalList::All => {
+                self.format_token_id(span.start_token + 1, buffer)
+            }
+        }
+        // :
+        self.format_token_id(spec.type_mark.span.start_token - 1, buffer);
+        buffer.push_whitespace();
+        self.format_name(spec.type_mark.as_ref(), buffer);
+        buffer.push_whitespace();
+        // after
+        self.format_token_id(spec.time.span.start_token - 1, buffer);
+        buffer.push_whitespace();
+        self.format_expression(spec.time.as_ref(), buffer);
+        // ;
+        self.format_token_id(span.end_token, buffer);
     }
 
     pub fn format_component_declaration(
@@ -717,6 +758,13 @@ end protected;",
     attribute foreign of fun: function is \"fun\";
 end protected;",
         );
+    }
+
+    #[test]
+    fn disconnection_specification() {
+        check_declaration("disconnect a, b: bit after 10 ns;");
+        check_declaration("disconnect others: bit after 1 ns;");
+        check_declaration("disconnect all: bit after 1 ns;");
     }
 
     #[test]
