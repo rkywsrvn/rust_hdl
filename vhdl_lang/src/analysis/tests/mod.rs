@@ -14,6 +14,7 @@ mod deferred_constant;
 mod disconnection;
 mod discrete_ranges;
 mod external_names;
+mod generic_types;
 mod group;
 mod hierarchy;
 mod homographs;

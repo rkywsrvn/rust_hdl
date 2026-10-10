@@ -35,9 +35,20 @@ pub enum Type<'a> {
     // The region of the protected type which needs to be extended by the body
     Protected(Region<'a>, bool),
     File,
-    Interface,
+    Interface(InterfaceTypeClass),
     Alias(TypeEnt<'a>),
     Universal(UniversalType),
+}
+
+/// LRM 6.5.3: The class of a generic type, given by its incomplete type definition.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum InterfaceTypeClass {
+    Private,
+    Scalar,
+    Discrete,
+    Integer,
+    Floating,
+    Physical,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -59,7 +70,7 @@ impl Type<'_> {
             Type::Access(..) => "access type",
             Type::Subtype(..) => "subtype",
             Type::Incomplete => "type",
-            Type::Interface => "type",
+            Type::Interface(_) => "type",
             Type::File => "file type",
             Type::Protected(..) => "protected type",
             Type::Universal(univ) => univ.describe(),
@@ -68,17 +79,37 @@ impl Type<'_> {
 
     pub fn is_scalar(&self) -> bool {
         use Type::*;
-        matches!(self, Enum(_) | Integer | Real | Physical | Universal(_))
+        matches!(
+            self,
+            Enum(_)
+                | Integer
+                | Real
+                | Physical
+                | Universal(_)
+                | Interface(
+                    InterfaceTypeClass::Scalar
+                        | InterfaceTypeClass::Discrete
+                        | InterfaceTypeClass::Integer
+                        | InterfaceTypeClass::Floating
+                        | InterfaceTypeClass::Physical
+                )
+        )
     }
 
     pub fn is_discrete(&self) -> bool {
         use Type::*;
-        matches!(self, Integer | Enum(_) | Universal(UniversalType::Integer))
+        matches!(
+            self,
+            Integer
+                | Enum(_)
+                | Universal(UniversalType::Integer)
+                | Interface(InterfaceTypeClass::Discrete | InterfaceTypeClass::Integer)
+        )
     }
 
     pub fn is_physical(&self) -> bool {
         use Type::*;
-        matches!(self, Physical)
+        matches!(self, Physical | Interface(InterfaceTypeClass::Physical))
     }
 
     pub fn is_array(&self) -> bool {
@@ -287,7 +318,7 @@ impl<'a> TypeEnt<'a> {
 
     // @TODO used to skip things from instantiated packages which we cannot handle yet
     pub fn is_generic(&self) -> bool {
-        matches!(self.base_type().kind(), Type::Interface)
+        matches!(self.base_type().kind(), Type::Interface(_))
     }
 
     pub fn describe(&self) -> String {
@@ -346,14 +377,18 @@ impl<'a> BaseType<'a> {
     pub fn is_any_integer(&self) -> bool {
         matches!(
             self.kind(),
-            Type::Integer | Type::Universal(UniversalType::Integer)
+            Type::Integer
+                | Type::Universal(UniversalType::Integer)
+                | Type::Interface(InterfaceTypeClass::Integer)
         )
     }
 
     pub fn is_any_real(&self) -> bool {
         matches!(
             self.kind(),
-            Type::Real | Type::Universal(UniversalType::Real)
+            Type::Real
+                | Type::Universal(UniversalType::Real)
+                | Type::Interface(InterfaceTypeClass::Floating)
         )
     }
 
@@ -378,10 +413,16 @@ impl<'a> BaseType<'a> {
 
     pub fn is_universal_of(&self, other: BaseType<'a>) -> bool {
         let i = matches!(self.kind(), Type::Universal(UniversalType::Integer))
-            && matches!(other.kind(), Type::Integer);
+            && matches!(
+                other.kind(),
+                Type::Integer | Type::Interface(InterfaceTypeClass::Integer)
+            );
 
         let r = matches!(self.kind(), Type::Universal(UniversalType::Real))
-            && matches!(other.kind(), Type::Real);
+            && matches!(
+                other.kind(),
+                Type::Real | Type::Interface(InterfaceTypeClass::Floating)
+            );
 
         i || r
     }

@@ -469,7 +469,7 @@ fn type_kind(t: &Type) -> SymbolKind {
         vhdl_lang::Type::Subtype(t) => type_kind(t.type_mark().kind()),
         vhdl_lang::Type::Protected(_, _) => SymbolKind::CLASS,
         vhdl_lang::Type::File => SymbolKind::FILE,
-        vhdl_lang::Type::Interface => SymbolKind::TYPE_PARAMETER,
+        vhdl_lang::Type::Interface(_) => SymbolKind::TYPE_PARAMETER,
         vhdl_lang::Type::Alias(t) => type_kind(t.kind()),
         vhdl_lang::Type::Universal(_) => SymbolKind::NUMBER,
     }

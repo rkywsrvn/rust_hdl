@@ -602,6 +602,15 @@ impl<'a> AnalyzeContext<'a, '_> {
                                 continue;
                             };
 
+                            if let Type::Interface(class) = uninst_typ.kind() {
+                                if let Some(required) = unmatched_type_class(*class, typ) {
+                                    diagnostics.add(
+                                        actual.pos(self.ctx),
+                                        format!("{} is not {required}", typ.describe()),
+                                        ErrorCode::TypeMismatch,
+                                    );
+                                }
+                            }
                             mapping.insert(uninst_typ.id(), typ);
                         }
                         InterfaceEnt::Subprogram(target) => match expr {
@@ -871,4 +880,18 @@ impl Diagnostic {
             ErrorCode::TypeMismatch,
         )
     }
+}
+
+/// LRM 6.5.7.2: The actual of a generic type must belong to the class of the generic type.
+/// Returns a description of the required class if `typ` does not belong to it.
+fn unmatched_type_class(class: InterfaceTypeClass, typ: TypeEnt<'_>) -> Option<&'static str> {
+    let (matches, required) = match class {
+        InterfaceTypeClass::Private => (true, ""),
+        InterfaceTypeClass::Scalar => (typ.is_scalar(), "a scalar type"),
+        InterfaceTypeClass::Discrete => (typ.is_discrete(), "a discrete type"),
+        InterfaceTypeClass::Integer => (typ.base().is_any_integer(), "an integer type"),
+        InterfaceTypeClass::Floating => (typ.base().is_any_real(), "a floating point type"),
+        InterfaceTypeClass::Physical => (typ.is_physical(), "a physical type"),
+    };
+    (!matches).then_some(required)
 }

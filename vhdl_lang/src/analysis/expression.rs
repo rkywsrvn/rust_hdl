@@ -108,8 +108,12 @@ impl<'a> TypeMatcher<'_, 'a, '_> {
             true
         } else if self.implicit_type_conversion {
             match ttyp.kind() {
-                Type::Integer => types.match_type(self.context.universal_integer()),
-                Type::Real => types.match_type(self.context.universal_real()),
+                Type::Integer | Type::Interface(InterfaceTypeClass::Integer) => {
+                    types.match_type(self.context.universal_integer())
+                }
+                Type::Real | Type::Interface(InterfaceTypeClass::Floating) => {
+                    types.match_type(self.context.universal_real())
+                }
                 Type::Universal(UniversalType::Integer)
                     if self.implicit_type_conversion_from_universal =>
                 {
@@ -467,8 +471,12 @@ impl<'a, 't> AnalyzeContext<'a, 't> {
 
     fn as_universal(&self, typ: BaseType<'a>) -> Option<BaseType<'a>> {
         match typ.kind() {
-            Type::Integer => Some(self.universal_integer()),
-            Type::Real => Some(self.universal_real()),
+            Type::Integer | Type::Interface(InterfaceTypeClass::Integer) => {
+                Some(self.universal_integer())
+            }
+            Type::Real | Type::Interface(InterfaceTypeClass::Floating) => {
+                Some(self.universal_real())
+            }
             _ => None,
         }
     }

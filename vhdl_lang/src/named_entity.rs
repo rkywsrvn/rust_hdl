@@ -15,7 +15,9 @@ use crate::ast::{
 use crate::data::*;
 mod types;
 use fnv::FnvHashMap;
-pub use types::{BaseType, Subtype, Type, TypeEnt, TypedSelection, UniversalType};
+pub use types::{
+    BaseType, InterfaceTypeClass, Subtype, Type, TypeEnt, TypedSelection, UniversalType,
+};
 mod overloaded;
 pub use overloaded::{Overloaded, OverloadedEnt, Signature, SignatureKey, SubprogramKey};
 mod object;

@@ -1403,9 +1403,34 @@ impl Search for InterfaceDeclaration {
                 return_if_found!(searcher
                     .search_decl(
                         ctx,
-                        FoundDeclaration::new(&decl.decl, DeclarationItem::InterfaceType(decl))
+                        FoundDeclaration::new(
+                            &decl.ident.decl,
+                            DeclarationItem::InterfaceType(&decl.ident)
+                        )
                     )
                     .or_not_found());
+                match decl.definition.as_ref().map(|definition| &definition.item) {
+                    Some(IncompleteTypeDefinition::Array(indexes, _, subtype)) => {
+                        for index in indexes {
+                            match index {
+                                ArrayIndex::IndexSubtypeDefintion(type_mark) => {
+                                    return_if_found!(type_mark.search(ctx, searcher));
+                                }
+                                ArrayIndex::Discrete(drange) => {
+                                    return_if_found!(drange.item.search(ctx, searcher));
+                                }
+                            }
+                        }
+                        return_if_found!(subtype.search(ctx, searcher));
+                    }
+                    Some(IncompleteTypeDefinition::Access(subtype)) => {
+                        return_if_found!(subtype.search(ctx, searcher));
+                    }
+                    Some(IncompleteTypeDefinition::File(type_mark)) => {
+                        return_if_found!(type_mark.search(ctx, searcher));
+                    }
+                    _ => {}
+                }
             }
             InterfaceDeclaration::Package(package_instance) => {
                 return_if_found!(searcher

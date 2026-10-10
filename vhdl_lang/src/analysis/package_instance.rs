@@ -441,7 +441,7 @@ impl<'a> AnalyzeContext<'a, '_> {
             Type::Alias(typ) => Type::Alias(self.map_type_ent(mapping, *typ, scope)),
             Type::Universal(utyp) => Type::Universal(*utyp),
             Type::Incomplete => Type::Incomplete,
-            Type::Interface => Type::Interface,
+            Type::Interface(class) => Type::Interface(*class),
         })
     }
 

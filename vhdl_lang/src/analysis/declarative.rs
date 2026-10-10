@@ -1151,19 +1151,61 @@ impl<'a> AnalyzeContext<'a, '_> {
             InterfaceDeclaration::Object(ref mut object_decl) => {
                 self.analyze_interface_object_declaration(scope, parent, object_decl, diagnostics)?
             }
-            InterfaceDeclaration::Type(ref mut ident) => {
+            InterfaceDeclaration::Type(ref mut decl) => {
+                let class = match decl.definition.as_mut().map(|def| &mut def.item) {
+                    None | Some(IncompleteTypeDefinition::Private) => InterfaceTypeClass::Private,
+                    Some(IncompleteTypeDefinition::Scalar) => InterfaceTypeClass::Scalar,
+                    Some(IncompleteTypeDefinition::Discrete) => InterfaceTypeClass::Discrete,
+                    Some(IncompleteTypeDefinition::Integer) => InterfaceTypeClass::Integer,
+                    Some(IncompleteTypeDefinition::Floating) => InterfaceTypeClass::Floating,
+                    Some(IncompleteTypeDefinition::Physical) => InterfaceTypeClass::Physical,
+                    // Composite, access and file generic types are only resolved for now
+                    // and get the operations of a private type.
+                    Some(IncompleteTypeDefinition::Array(indexes, _, subtype)) => {
+                        for index in indexes.iter_mut() {
+                            as_fatal(self.analyze_array_index(scope, index, diagnostics))?;
+                        }
+                        as_fatal(self.resolve_subtype_indication(scope, subtype, diagnostics))?;
+                        InterfaceTypeClass::Private
+                    }
+                    Some(IncompleteTypeDefinition::Access(subtype)) => {
+                        as_fatal(self.resolve_subtype_indication(scope, subtype, diagnostics))?;
+                        InterfaceTypeClass::Private
+                    }
+                    Some(IncompleteTypeDefinition::File(type_mark)) => {
+                        as_fatal(self.type_name(
+                            scope,
+                            type_mark.span,
+                            &mut type_mark.item,
+                            diagnostics,
+                        ))?;
+                        InterfaceTypeClass::Private
+                    }
+                };
                 let typ = TypeEnt::from_any(self.define(
-                    ident,
+                    &mut decl.ident,
                     parent,
-                    AnyEntKind::Type(Type::Interface),
+                    AnyEntKind::Type(Type::Interface(class)),
                     span,
                 ))
                 .unwrap();
 
-                let implicit = [
-                    self.comparison(Operator::EQ, typ),
-                    self.comparison(Operator::NE, typ),
-                ];
+                let implicit: Vec<_> = match class {
+                    InterfaceTypeClass::Private => vec![
+                        self.comparison(Operator::EQ, typ),
+                        self.comparison(Operator::NE, typ),
+                    ],
+                    InterfaceTypeClass::Scalar | InterfaceTypeClass::Discrete => {
+                        self.comparators(typ).collect()
+                    }
+                    InterfaceTypeClass::Integer => self
+                        .numeric_implicits(UniversalType::Integer, typ)
+                        .collect(),
+                    InterfaceTypeClass::Floating => {
+                        self.numeric_implicits(UniversalType::Real, typ).collect()
+                    }
+                    InterfaceTypeClass::Physical => self.physical_implicits(typ).collect(),
+                };
 
                 for ent in implicit {
                     unsafe {

@@ -866,11 +866,53 @@ pub struct InterfaceSubprogramDeclaration {
 pub enum InterfaceDeclaration {
     Object(InterfaceObjectDeclaration),
     File(InterfaceFileDeclaration),
-    Type(WithDecl<Ident>),
+    Type(InterfaceTypeDeclaration),
     /// LRM 6.5.4 Interface subprogram declarations
     Subprogram(InterfaceSubprogramDeclaration),
     /// LRM 6.5.5 Interface package declaration
     Package(InterfacePackageDeclaration),
+}
+
+/// LRM 6.5.3 Interface type declarations
+#[derive(PartialEq, Debug, Clone)]
+pub struct InterfaceTypeDeclaration {
+    pub ident: WithDecl<Ident>,
+    /// The VHDL-2019 incomplete type definition after `is`
+    pub definition: Option<WithTokenSpan<IncompleteTypeDefinition>>,
+}
+
+impl HasTokenSpan for InterfaceTypeDeclaration {
+    fn get_start_token(&self) -> TokenId {
+        self.ident.get_start_token()
+    }
+
+    fn get_end_token(&self) -> TokenId {
+        self.definition
+            .as_ref()
+            .map_or(self.ident.get_end_token(), |definition| {
+                definition.span.end_token
+            })
+    }
+}
+
+/// LRM 6.5.3 Incomplete type definitions of generic types (VHDL-2019)
+#[derive(PartialEq, Debug, Clone)]
+pub enum IncompleteTypeDefinition {
+    /// `private`
+    Private,
+    /// `<>`
+    Scalar,
+    /// `(<>)`
+    Discrete,
+    /// `range <>`
+    Integer,
+    /// `units <>`
+    Physical,
+    /// `range <> . <>`
+    Floating,
+    Array(Vec<ArrayIndex>, TokenId, SubtypeIndication),
+    Access(SubtypeIndication),
+    File(WithTokenSpan<Name>),
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy, Default)]

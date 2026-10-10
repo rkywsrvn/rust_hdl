@@ -140,7 +140,7 @@ fn extract_objects_with_class(region: &Region<'_>, object_class: ObjectClass) ->
             {
                 Some(ent.id)
             }
-            AnyEntKind::Type(named_entity::Type::Interface)
+            AnyEntKind::Type(named_entity::Type::Interface(_))
                 if object_class == ObjectClass::Constant =>
             {
                 Some(ent.id)

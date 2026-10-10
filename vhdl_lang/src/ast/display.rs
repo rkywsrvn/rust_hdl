@@ -1109,7 +1109,13 @@ impl Display for InterfaceDeclaration {
         match self {
             InterfaceDeclaration::Object(ref decl) => write!(f, "{decl}"),
             InterfaceDeclaration::File(ref decl) => write!(f, "{decl}"),
-            InterfaceDeclaration::Type(ref ident) => write!(f, "type {ident}"),
+            InterfaceDeclaration::Type(ref decl) => {
+                write!(f, "type {}", decl.ident)?;
+                if let Some(definition) = &decl.definition {
+                    write!(f, " is {}", definition.item)?;
+                }
+                Ok(())
+            }
             InterfaceDeclaration::Subprogram(ref decl) => {
                 write!(f, "{}", decl.specification)?;
                 match &decl.default {
@@ -1279,6 +1285,31 @@ impl Display for PackageDeclaration {
             }
         } else {
             write!(f, "package {}", self.ident)
+        }
+    }
+}
+
+impl Display for IncompleteTypeDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            IncompleteTypeDefinition::Private => write!(f, "private"),
+            IncompleteTypeDefinition::Scalar => write!(f, "<>"),
+            IncompleteTypeDefinition::Discrete => write!(f, "(<>)"),
+            IncompleteTypeDefinition::Integer => write!(f, "range <>"),
+            IncompleteTypeDefinition::Physical => write!(f, "units <>"),
+            IncompleteTypeDefinition::Floating => write!(f, "range <> . <>"),
+            IncompleteTypeDefinition::Array(indexes, _, subtype) => {
+                write!(f, "array (")?;
+                for (i, index) in indexes.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{index}")?;
+                }
+                write!(f, ") of {subtype}")
+            }
+            IncompleteTypeDefinition::Access(subtype) => write!(f, "access {subtype}"),
+            IncompleteTypeDefinition::File(type_mark) => write!(f, "file of {type_mark}"),
         }
     }
 }

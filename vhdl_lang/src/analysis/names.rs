@@ -637,7 +637,7 @@ impl<'a> AnalyzeContext<'a, '_> {
             let resolved = as_fatal(self.name_resolve(scope, expr_pos, name, diagnostics))?;
 
             if let Some(ResolvedName::Type(typ)) = resolved {
-                return if matches!(typ.base_type().kind(), Type::Enum { .. } | Type::Integer) {
+                return if typ.base_type().is_discrete() {
                     Ok(Some(typ))
                 } else {
                     bail!(

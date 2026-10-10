@@ -47,7 +47,7 @@ fn parse_enumeration_type_definition(ctx: &mut ParsingContext<'_>) -> ParseResul
     Ok(TypeDefinition::Enumeration(enum_literals))
 }
 
-fn parse_array_index_constraints(ctx: &mut ParsingContext<'_>) -> ParseResult<Vec<ArrayIndex>> {
+pub fn parse_array_index_constraints(ctx: &mut ParsingContext<'_>) -> ParseResult<Vec<ArrayIndex>> {
     ctx.stream.expect_kind(LeftPar)?;
     let mut indexes = Vec::new();
     loop {
