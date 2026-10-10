@@ -115,6 +115,22 @@ fn parse_interface_object_declaration(
 
     let colon_token = ctx.stream.expect_kind(Colon)?;
     let mode = if ctx.stream.next_kind_is(View) {
+        // LRM 6.5.2: Only interface signal declarations may have a mode view indication.
+        if list_type == InterfaceType::Generic {
+            return Err(Diagnostic::syntax_error(
+                ctx.stream.peek_expect()?.pos.clone(),
+                "Generic list does not allow mode views",
+            ));
+        }
+        if let Some(class) = explicit_object_class
+            .as_ref()
+            .filter(|class| class.item != ObjectClass::Signal)
+        {
+            return Err(Diagnostic::syntax_error(
+                ctx.get_pos(class.token),
+                "Only signals may have a mode view",
+            ));
+        }
         ModeIndication::View(parse_view_mode_indication(ctx)?)
     } else {
         ModeIndication::Simple(parse_simple_mode_indication(

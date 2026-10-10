@@ -1085,9 +1085,15 @@ impl<'a> AnalyzeContext<'a, '_> {
                 ModeIndication::View(view) => {
                     let (view_ent, subtype) =
                         self.analyze_mode_indication(scope, object, view, diagnostics)?;
+                    let mode = InterfaceMode::View(view_ent);
                     Object {
                         class: ObjectClass::Signal,
-                        iface: Some(ObjectInterface::Port(InterfaceMode::View(view_ent))),
+                        iface: Some(match object_decl.list_type {
+                            InterfaceType::Parameter => ObjectInterface::Parameter(mode),
+                            InterfaceType::Port | InterfaceType::Generic => {
+                                ObjectInterface::Port(mode)
+                            }
+                        }),
                         subtype,
                         has_default: false,
                     }

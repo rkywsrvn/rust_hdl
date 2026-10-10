@@ -1008,3 +1008,75 @@ end view;",
         ],
     );
 }
+
+#[test]
+fn generic_list_does_not_allow_views() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+entity ent is
+    generic (g : view inner_v);
+end entity;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::syntax_error(
+            code.s1("g : view").s1("view"),
+            "Generic list does not allow mode views",
+        )],
+    );
+}
+
+#[test]
+fn only_signals_may_have_views() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+package proc_pkg is
+    procedure p (variable v : view inner_v);
+end package;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::syntax_error(
+            code.s1("variable"),
+            "Only signals may have a mode view",
+        )],
+    );
+}
+
+#[test]
+fn view_parameter_follows_the_view_modes() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+package proc_pkg is
+    procedure p (signal s : view inner_v);
+end package;
+
+package body proc_pkg is
+    procedure p (signal s : view inner_v) is
+    begin
+        s.b <= '1';
+        s.a <= '1';
+    end procedure;
+end package body;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::new(
+            code.s1("s.a"),
+            "'s.a' has mode in and may not be the target of an assignment",
+            ErrorCode::MismatchedKinds,
+        )],
+    );
+}
