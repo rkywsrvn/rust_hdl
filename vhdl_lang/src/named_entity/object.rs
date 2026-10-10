@@ -215,11 +215,95 @@ impl<'a> ViewEnt<'a> {
         }
     }
 
-    pub fn subtype(&self) -> &'a Subtype<'a> {
-        if let AnyEntKind::View(subtype) = self.ent.actual_kind() {
-            subtype
+    pub fn view(&self) -> &'a View<'a> {
+        if let AnyEntKind::View(view) = self.ent.actual_kind() {
+            view
         } else {
             unreachable!("ViewEnt type invariant broken")
+        }
+    }
+
+    pub fn subtype(&self) -> &'a Subtype<'a> {
+        &self.view().subtype
+    }
+}
+
+/// LRM 6.5.2 Mode view declaration
+#[derive(Clone)]
+pub struct View<'a> {
+    pub subtype: Subtype<'a>,
+    pub elements: Vec<(Designator, ViewElementMode<'a>)>,
+}
+
+impl<'a> View<'a> {
+    pub fn element_mode(&self, designator: &Designator) -> Option<ViewElementMode<'a>> {
+        self.elements
+            .iter()
+            .find(|(element, _)| element == designator)
+            .map(|(_, mode)| *mode)
+    }
+
+    /// The view that `'converse` denotes.
+    pub fn converse(&self) -> View<'a> {
+        View {
+            subtype: self.subtype,
+            elements: self
+                .elements
+                .iter()
+                .map(|(designator, mode)| (designator.clone(), mode.converse()))
+                .collect(),
+        }
+    }
+
+    /// Returns true if any element, including elements of nested views, has the given mode.
+    pub fn has_element_with_mode(&self, mode: Mode, conversed: bool) -> bool {
+        self.elements
+            .iter()
+            .any(|(_, element)| match element.converse_if(conversed) {
+                ViewElementMode::Simple(element_mode) => element_mode == mode,
+                ViewElementMode::Record(view, nested_conversed)
+                | ViewElementMode::Array(view, nested_conversed) => {
+                    view.view().has_element_with_mode(mode, nested_conversed)
+                }
+            })
+    }
+}
+
+/// The mode of a record element in a mode view.
+/// Nested views carry a flag that is true if the view is conversed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ViewElementMode<'a> {
+    Simple(Mode),
+    Record(ViewEnt<'a>, bool),
+    Array(ViewEnt<'a>, bool),
+}
+
+impl ViewElementMode<'_> {
+    pub fn converse(self) -> Self {
+        match self {
+            ViewElementMode::Simple(mode) => ViewElementMode::Simple(mode.converse()),
+            ViewElementMode::Record(view, conversed) => ViewElementMode::Record(view, !conversed),
+            ViewElementMode::Array(view, conversed) => ViewElementMode::Array(view, !conversed),
+        }
+    }
+
+    pub fn converse_if(self, conversed: bool) -> Self {
+        if conversed {
+            self.converse()
+        } else {
+            self
+        }
+    }
+}
+
+impl Mode {
+    /// LRM 6.5.2: The converse of a mode.
+    pub fn converse(self) -> Mode {
+        match self {
+            Mode::In => Mode::Out,
+            Mode::Out | Mode::Buffer => Mode::In,
+            Mode::InOut => Mode::InOut,
+            Mode::Linkage => Mode::Linkage,
         }
     }
 }

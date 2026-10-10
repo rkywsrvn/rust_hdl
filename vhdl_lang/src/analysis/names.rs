@@ -1112,10 +1112,12 @@ impl<'a> AnalyzeContext<'a, '_> {
                 .map(|typ| ResolvedName::Type(typ.base().into())),
             AttributeDesignator::Converse => {
                 let view = self.resolve_view_ent(prefix, diagnostics, prefix_pos)?;
-                // Since we do not check the actual mode of the view,
-                // this does not actually converse anything at the moment.
-                // We only check that the selected name is a view and return that view.
-                Ok(ResolvedName::Final(view.ent))
+                let conversed = self.arena.implicit(
+                    view.ent,
+                    view.ent.designator().clone(),
+                    AnyEntKind::View(view.view().converse()),
+                );
+                Ok(ResolvedName::Final(conversed))
             }
         }
     }

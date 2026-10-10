@@ -346,7 +346,7 @@ impl<'a> AnalyzeContext<'a, '_> {
                 }
                 ResolvedName::Final(ent) => {
                     if let Some(ent) = ViewEnt::from_any(ent) {
-                        AnyEntKind::View(*ent.subtype())
+                        AnyEntKind::View(ent.view().clone())
                     } else {
                         // @TODO some of these can probably be aliased
                         return Err(EvalError::Unknown);
@@ -659,7 +659,9 @@ impl<'a> AnalyzeContext<'a, '_> {
             }
         };
         let mut unassociated: HashSet<_> = record_region.elems.iter().collect();
+        let mut elements = Vec::new();
         for element in view.elements.iter_mut() {
+            let mode = self.analyze_mode_view_element(&mut element.mode, scope, diagnostics)?;
             for name in element.names.iter_mut() {
                 let desi = Designator::Identifier(name.tree.item.clone());
                 let Some(record_element) = record_region.lookup(&desi) else {
@@ -671,9 +673,19 @@ impl<'a> AnalyzeContext<'a, '_> {
                     continue;
                 };
                 name.decl.set_unique_reference(&record_element);
-                unassociated.remove(&record_element);
+                if !unassociated.remove(&record_element) {
+                    diagnostics.add(
+                        name.pos(self.ctx),
+                        format!("{} is already part of the view", record_element.describe()),
+                        ErrorCode::AlreadyAssociated,
+                    );
+                    continue;
+                }
+                if let Some(mode) = mode {
+                    self.check_view_element_type(&record_element, mode, &element.mode, diagnostics);
+                    elements.push((desi, mode));
+                }
             }
-            self.analyze_mode_view_element(&mut element.mode, scope, diagnostics)?;
         }
         if !unassociated.is_empty() {
             diagnostics.add(
@@ -682,7 +694,15 @@ impl<'a> AnalyzeContext<'a, '_> {
                 ErrorCode::Unassociated,
             );
         }
-        Ok(self.define(&mut view.ident, parent, AnyEntKind::View(typ), src_span))
+        Ok(self.define(
+            &mut view.ident,
+            parent,
+            AnyEntKind::View(View {
+                subtype: typ,
+                elements,
+            }),
+            src_span,
+        ))
     }
 
     fn analyze_mode_view_element(
@@ -690,27 +710,75 @@ impl<'a> AnalyzeContext<'a, '_> {
         mode: &mut ElementMode,
         scope: &Scope<'a>,
         diagnostics: &mut dyn DiagnosticHandler,
-    ) -> EvalResult {
-        match mode {
-            ElementMode::Simple(_) => {}
-            ElementMode::Record(name) | ElementMode::Array(name) => {
-                let Some(resolved_name) =
-                    as_fatal(self.name_resolve(scope, name.span, &mut name.item, diagnostics))?
-                else {
-                    return Ok(());
-                };
-                match resolved_name {
-                    ResolvedName::Final(ent) if matches!(ent.kind(), AnyEntKind::View(_)) => {}
-                    _ => {
-                        diagnostics.push(Diagnostic::mismatched_kinds(
-                            name.span.pos(self.ctx),
-                            "Expected view",
-                        ));
-                    }
-                }
-            }
+    ) -> EvalResult<Option<ViewElementMode<'a>>> {
+        let (name, is_array) = match mode {
+            ElementMode::Simple(mode) => return Ok(Some(ViewElementMode::Simple(mode.item))),
+            ElementMode::Record(name) => (name, false),
+            ElementMode::Array(name) => (name, true),
+        };
+        let Some(resolved_name) =
+            as_fatal(self.name_resolve(scope, name.span, &mut name.item, diagnostics))?
+        else {
+            return Ok(None);
+        };
+        let view = match resolved_name {
+            ResolvedName::Final(ent) => ViewEnt::from_any(ent),
+            _ => None,
+        };
+        let Some(view) = view else {
+            diagnostics.push(Diagnostic::mismatched_kinds(
+                name.span.pos(self.ctx),
+                "Expected view",
+            ));
+            return Ok(None);
+        };
+        Ok(Some(if is_array {
+            ViewElementMode::Array(view, false)
+        } else {
+            ViewElementMode::Record(view, false)
+        }))
+    }
+
+    /// LRM 6.5.2: A record element with a nested view must have the type of that view,
+    /// or be an array of that type if the view is given in parentheses.
+    fn check_view_element_type(
+        &self,
+        record_element: &RecordElement<'a>,
+        mode: ViewElementMode<'a>,
+        ast_mode: &ElementMode,
+        diagnostics: &mut dyn DiagnosticHandler,
+    ) {
+        let element_type = record_element.type_mark().base_type();
+        let (view, expected) = match (mode, ast_mode) {
+            (ViewElementMode::Record(view, _), ElementMode::Record(name)) => (view, name),
+            (ViewElementMode::Array(view, _), ElementMode::Array(name)) => (view, name),
+            _ => return,
+        };
+        let view_type = view.subtype().base_type();
+        let matches = match mode {
+            ViewElementMode::Array(..) => matches!(
+                element_type.kind(),
+                Type::Array { elem_type, .. } if elem_type.base_type() == view_type
+            ),
+            _ => element_type == view_type,
+        };
+        if !matches {
+            let expected_type = if matches!(mode, ViewElementMode::Array(..)) {
+                format!("an array of {}", view_type.describe())
+            } else {
+                view_type.describe()
+            };
+            diagnostics.add(
+                expected.span.pos(self.ctx),
+                format!(
+                    "{} is {}, but the view requires {}",
+                    record_element.describe(),
+                    element_type.describe(),
+                    expected_type
+                ),
+                ErrorCode::TypeMismatch,
+            );
         }
-        Ok(())
     }
 
     fn find_deferred_constant_declaration(

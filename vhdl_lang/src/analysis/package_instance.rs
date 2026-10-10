@@ -268,7 +268,10 @@ impl<'a> AnalyzeContext<'a, '_> {
                     ));
                 }
             },
-            AnyEntKind::View(typ) => AnyEntKind::View(self.map_subtype(mapping, *typ, scope)),
+            AnyEntKind::View(view) => AnyEntKind::View(View {
+                subtype: self.map_subtype(mapping, view.subtype, scope),
+                elements: view.elements.clone(),
+            }),
         })
     }
 

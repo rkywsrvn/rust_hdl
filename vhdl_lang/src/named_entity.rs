@@ -18,7 +18,9 @@ pub use types::{BaseType, Subtype, Type, TypeEnt, TypedSelection, UniversalType}
 mod overloaded;
 pub use overloaded::{Overloaded, OverloadedEnt, Signature, SignatureKey, SubprogramKey};
 mod object;
-pub use object::{InterfaceMode, Object, ObjectEnt, ObjectInterface, ViewEnt};
+pub use object::{
+    InterfaceMode, Object, ObjectEnt, ObjectInterface, View, ViewElementMode, ViewEnt,
+};
 mod design;
 pub use design::{Design, DesignEnt, InterfacePackageMapKind};
 mod attribute;
@@ -126,7 +128,7 @@ pub enum AnyEntKind<'a> {
     Design(Design<'a>),
     /// A VHDL 2019 View.
     /// The [Subtype] data is the type of the associated record.
-    View(Subtype<'a>),
+    View(View<'a>),
 }
 
 impl<'a> AnyEntKind<'a> {

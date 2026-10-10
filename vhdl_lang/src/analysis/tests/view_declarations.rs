@@ -421,8 +421,6 @@ end entity;
     ",
     );
     let diag = builder.analyze();
-    // The mode of views is not analyzed at the moment, so the 'converse attribute
-    // should simply not show any diagnostics.
     check_no_diagnostics(&diag);
 }
 
@@ -762,4 +760,68 @@ end entity sub;
     ",
     );
     check_no_diagnostics(&builder.analyze());
+}
+
+#[test]
+fn element_may_only_be_part_of_view_once() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.in_declarative_region(
+        "\
+type rec_t is record
+    a : bit;
+end record;
+
+view rec_v of rec_t is
+    a : in;
+    a : out;
+end view;",
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::new(
+            code.s1("a : out").s1("a"),
+            "record element 'a' is already part of the view",
+            ErrorCode::AlreadyAssociated,
+        )],
+    );
+}
+
+#[test]
+fn nested_view_must_match_element_type() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.in_declarative_region(
+        "\
+type inner_t is record
+    a : bit;
+end record;
+
+view inner_v of inner_t is
+    a : in;
+end view;
+
+type outer_t is record
+    r : bit;
+    s : inner_t;
+end record;
+
+view outer_v of outer_t is
+    r : view inner_v;
+    s : view (inner_v);
+end view;",
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![
+            Diagnostic::new(
+                code.s1("r : view inner_v").s1("inner_v"),
+                "record element 'r' is type 'BIT', but the view requires record type 'inner_t'",
+                ErrorCode::TypeMismatch,
+            ),
+            Diagnostic::new(
+                code.s1("s : view (inner_v)").s1("inner_v"),
+                "record element 's' is record type 'inner_t', but the view requires an array of record type 'inner_t'",
+                ErrorCode::TypeMismatch,
+            ),
+        ],
+    );
 }
