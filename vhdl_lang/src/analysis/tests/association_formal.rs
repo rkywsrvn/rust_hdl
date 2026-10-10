@@ -599,7 +599,7 @@ package test_pkg is
     end record;
     
     view vone of test_t is
-        foo : in;
+        foo : out;
     end view;
 
     type test_array is array (natural range <>) of test_t;
@@ -647,7 +647,7 @@ package test_pkg is
     end record;
     
     view vone of test_t is
-        foo : in;
+        foo : out;
     end view;
 end package;
 

@@ -425,7 +425,6 @@ end entity;
 }
 
 #[test]
-#[ignore]
 fn view_declaration_in_cannot_be_assigned_to() {
     let mut builder = LibraryBuilder::with_standard(VHDL2019);
     let code = builder.code(
@@ -458,7 +457,7 @@ end arch;
         diag,
         vec![Diagnostic::new(
             code.s1("y.x"),
-            "interface signal 'y' of mode in may not be the target of an assignment",
+            "'y.x' has mode in and may not be the target of an assignment",
             ErrorCode::MismatchedKinds,
         )],
     );
@@ -760,6 +759,190 @@ end entity sub;
     ",
     );
     check_no_diagnostics(&builder.analyze());
+}
+
+const VIEW_PKG: &str = "\
+package pkg is
+    type inner_t is record
+        a : bit;
+        b : bit;
+    end record;
+
+    view inner_v of inner_t is
+        a : in;
+        b : out;
+    end view;
+
+    type inner_arr is array (natural range <>) of inner_t;
+
+    type outer_t is record
+        x : bit;
+        r : inner_t;
+        arr : inner_arr(0 to 1);
+    end record;
+
+    view outer_v of outer_t is
+        x : out;
+        r : view inner_v;
+        arr : view (inner_v);
+    end view;
+end package;
+
+use work.pkg.all;
+";
+
+#[test]
+fn view_element_with_mode_out_can_be_assigned_to() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+entity ent is
+    port (p : view outer_v);
+end entity;
+
+architecture arch of ent is
+begin
+    p.x <= '1';
+    p.r.b <= '1';
+    p.arr(0).b <= '1';
+end architecture;"
+        ),
+    );
+    check_no_diagnostics(&builder.analyze());
+}
+
+#[test]
+fn nested_view_element_with_mode_in_cannot_be_assigned_to() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+entity ent is
+    port (p : view outer_v);
+end entity;
+
+architecture arch of ent is
+begin
+    p.r.a <= '1';
+    p.arr(1).a <= '1';
+end architecture;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![
+            Diagnostic::new(
+                code.s1("p.r.a"),
+                "'p.r.a' has mode in and may not be the target of an assignment",
+                ErrorCode::MismatchedKinds,
+            ),
+            Diagnostic::new(
+                code.s1("p.arr(1).a"),
+                "'p.arr(1).a' has mode in and may not be the target of an assignment",
+                ErrorCode::MismatchedKinds,
+            ),
+        ],
+    );
+}
+
+#[test]
+fn view_with_in_elements_cannot_be_assigned_to_as_a_whole() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+entity ent is
+    port (p : view outer_v);
+end entity;
+
+architecture arch of ent is
+begin
+    p.r <= ('0', '0');
+end architecture;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::new(
+            code.s1("p.r"),
+            "'p.r' has elements of mode in and may not be the target of an assignment",
+            ErrorCode::MismatchedKinds,
+        )],
+    );
+}
+
+#[test]
+fn converse_swaps_modes() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+entity ent is
+    port (p : view outer_v'converse);
+end entity;
+
+architecture arch of ent is
+begin
+    p.r.a <= '1';
+    p.arr(0).a <= '1';
+    p.x <= '1';
+    p.r.b <= '1';
+end architecture;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![
+            Diagnostic::new(
+                code.s1("p.x"),
+                "'p.x' has mode in and may not be the target of an assignment",
+                ErrorCode::MismatchedKinds,
+            ),
+            Diagnostic::new(
+                code.s1("p.r.b"),
+                "'p.r.b' has mode in and may not be the target of an assignment",
+                ErrorCode::MismatchedKinds,
+            ),
+        ],
+    );
+}
+
+#[test]
+fn converse_of_converse_is_the_original_view() {
+    let mut builder = LibraryBuilder::with_standard(VHDL2019);
+    let code = builder.code(
+        "libname",
+        &format!(
+            "{VIEW_PKG}
+package conv_pkg is
+    alias outer_conv is outer_v'converse;
+end package;
+
+use work.conv_pkg.all;
+
+entity ent is
+    port (p : view outer_conv'converse);
+end entity;
+
+architecture arch of ent is
+begin
+    p.r.a <= '1';
+end architecture;"
+        ),
+    );
+    check_diagnostics(
+        builder.analyze(),
+        vec![Diagnostic::new(
+            code.s1("p.r.a"),
+            "'p.r.a' has mode in and may not be the target of an assignment",
+            ErrorCode::MismatchedKinds,
+        )],
+    );
 }
 
 #[test]
