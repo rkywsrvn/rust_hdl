@@ -8,7 +8,7 @@
 use crate::ast::{
     ArrayIndex, ComponentDeclaration, ContextReference, ElementDeclaration, EntityName,
     FileDeclaration, ModeViewDeclaration, ObjectDeclaration, PackageInstantiation,
-    ProtectedTypeDeclarativeItem, SubtypeIndication, TypeDeclaration, TypeDefinition,
+    SubtypeIndication, TypeDeclaration, TypeDefinition,
 };
 use crate::formatting::buffer::Buffer;
 use crate::formatting::VHDLFormatter;
@@ -368,17 +368,12 @@ impl VHDLFormatter<'_> {
     ) {
         // protected
         self.format_token_id(span.start_token, buffer);
-        let mut last_token = span.start_token;
+        let last_token = declaration
+            .items
+            .last()
+            .map_or(span.start_token, |item| item.span.end_token);
         indented!(buffer, {
-            for element in &declaration.items {
-                buffer.line_break();
-                match element {
-                    ProtectedTypeDeclarativeItem::Subprogram(subprogram) => {
-                        self.format_subprogram_declaration(subprogram, buffer);
-                        last_token = subprogram.span.end_token;
-                    }
-                }
-            }
+            self.format_declarations(&declaration.items, buffer)
         });
         buffer.line_break();
         // end protected
@@ -712,6 +707,14 @@ end protected foo;",
             "type foo is protected
     procedure proc;
     function fun return ret;
+end protected;",
+        );
+
+        check_declaration(
+            "type foo is protected
+    use work.pkg.all;
+    pure function fun return ret;
+    attribute foreign of fun: function is \"fun\";
 end protected;",
         );
     }

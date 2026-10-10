@@ -442,11 +442,6 @@ pub struct ElementDeclaration {
 }
 
 /// LRM 5.6.2 Protected type declarations
-#[derive(PartialEq, Debug, Clone)]
-pub enum ProtectedTypeDeclarativeItem {
-    Subprogram(SubprogramDeclaration),
-}
-
 #[derive(PartialEq, Eq, Hash, Debug, Clone)]
 pub enum Designator {
     Identifier(Symbol),
@@ -588,7 +583,7 @@ pub enum Attribute {
 /// LRM 5.6.2 Protected type declarations
 #[derive(PartialEq, Debug, Clone)]
 pub struct ProtectedTypeDeclaration {
-    pub items: Vec<ProtectedTypeDeclarativeItem>,
+    pub items: Vec<WithTokenSpan<Declaration>>,
 }
 
 /// LRM 5.6.3 Protected type bodies

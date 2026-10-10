@@ -505,24 +505,29 @@ impl<'a> AnalyzeContext<'a, '_> {
 
                 let region = scope.nested();
                 for item in prot_decl.items.iter_mut() {
-                    match item {
-                        ProtectedTypeDeclarativeItem::Subprogram(ref mut subprogram) => {
-                            match as_fatal(self.subprogram_specification(
-                                scope,
-                                ptype,
-                                &mut subprogram.specification,
-                                subprogram.span,
-                                Overloaded::SubprogramDecl,
-                                diagnostics,
-                            ))? {
-                                Some((_, ent)) => {
-                                    region.add(ent, diagnostics);
-                                }
-                                None => {
-                                    return Ok(());
-                                }
-                            }
-                        }
+                    // LRM 5.6.2: protected_type_declarative_item
+                    if matches!(
+                        item.item,
+                        Declaration::SubprogramDeclaration(_)
+                            | Declaration::SubprogramInstantiation(_)
+                            | Declaration::Attribute(Attribute::Specification(_))
+                            | Declaration::Use(_)
+                    ) {
+                        self.analyze_declarative_part(
+                            &region,
+                            ptype,
+                            std::slice::from_mut(item),
+                            diagnostics,
+                        )?;
+                    } else {
+                        diagnostics.add(
+                            item.span.pos(self.ctx),
+                            format!(
+                                "{} declaration not allowed in a protected type declaration",
+                                item.item.describe()
+                            ),
+                            ErrorCode::DeclarationNotAllowed,
+                        );
                     }
                 }
 

@@ -213,6 +213,7 @@ pub fn parse_subprogram_specification(
     }
 }
 
+#[cfg(test)]
 pub fn parse_subprogram_declaration(
     ctx: &mut ParsingContext<'_>,
 ) -> ParseResult<SubprogramDeclaration> {

@@ -847,13 +847,7 @@ impl Search for TypeDeclaration {
                 return_if_found!(body.decl.search(ctx, searcher));
             }
             TypeDefinition::Protected(ref prot_decl) => {
-                for item in prot_decl.items.iter() {
-                    match item {
-                        ProtectedTypeDeclarativeItem::Subprogram(ref subprogram) => {
-                            return_if_found!(subprogram.search(ctx, searcher));
-                        }
-                    }
-                }
+                return_if_found!(prot_decl.items.search(ctx, searcher));
             }
             TypeDefinition::Record(ref element_decls) => {
                 for elem in element_decls {
