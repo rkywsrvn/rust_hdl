@@ -130,6 +130,11 @@ Using the example above, pressing F5 while inside Neovim starts the language
 server. There are also other options, like automatically starting it when  
 opening a certain file type, see the [Neovim LSP documentation](https://neovim.io/doc/user/lsp.html) for more.
 
+## Use in Zed
+
+The Zed extension is in [`editors/zed`](editors/zed). See its [README](editors/zed/README.md) for installation and
+settings.
+
 ## Configuration
 
 The language server needs to know your library mapping to perform full analysis of the code. For this it uses a configuration file in the [TOML](https://github.com/toml-lang/toml) format named `vhdl_ls.toml`.
