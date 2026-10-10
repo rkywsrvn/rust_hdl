@@ -11,8 +11,11 @@ use crate::syntax::Kind;
 use crate::{Token, TokenAccess};
 use vhdl_lang::ast::HasIdent;
 
+pub use checked::{format_source, FormatError};
+
 mod architecture;
 mod buffer;
+mod checked;
 mod concurrent_statement;
 mod configuration;
 mod constraint;

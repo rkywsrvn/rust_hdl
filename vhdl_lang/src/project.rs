@@ -9,6 +9,7 @@ use crate::ast::search::Searcher;
 use crate::ast::DesignFile;
 use crate::completion::{list_completion_options, CompletionItem};
 use crate::config::Config;
+use crate::formatting::{format_source, FormatError};
 use crate::lint::dead_code::UnusedDeclarationsLinter;
 use crate::lint::sensitivity_list::SensitivityListLinter;
 use crate::named_entity::EntRef;
@@ -196,6 +197,11 @@ impl Project {
         self.files
             .get(&FilePath::new(file_name))
             .map(|file| file.source.clone())
+    }
+
+    /// Formats a source with the VHDL standard of the project.
+    pub fn format_source(&self, source: &Source) -> Result<String, FormatError> {
+        format_source(&self.parser, source)
     }
 
     pub fn update_source(&mut self, source: &Source) {
